@@ -8,6 +8,7 @@ import { validateEnv } from './config/env';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: ['.env.local', '.env'],
       validate: validateEnv,
     }),
     DrizzleModule,

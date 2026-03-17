@@ -3,15 +3,5 @@
   "extends": [
     "../../packages/biome-config/biome.json",
     "../../packages/biome-config/nest.json"
-  ],
-  "files": {
-    "ignore": [
-      "node_modules",
-      "dist",
-      "coverage",
-      "drizzle",
-      "jest.config.*",
-      "nest-cli.json"
-    ]
-  }
+  ]
 }
