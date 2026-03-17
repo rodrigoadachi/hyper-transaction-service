@@ -3,9 +3,6 @@
   "extends": ["./biome.json"],
   "linter": {
     "rules": {
-      "correctness": {
-        "noUnusedParameters": "warn"
-      },
       "style": {
         "noNonNullAssertion": "warn",
         "useNamingConvention": "off"

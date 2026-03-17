@@ -6,15 +6,16 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignoreUnknown": false,
-    "ignore": [
-      "node_modules",
-      "dist",
-      "coverage",
-      "drizzle",
-      ".next",
-      "build",
-      "**/*.generated.ts"
+    "ignoreUnknown": true,
+    "includes": [
+      "**",
+      "!**/node_modules/**",
+      "!**/dist/**",
+      "!**/coverage/**",
+      "!**/drizzle/**",
+      "!**/.next/**",
+      "!**/build/**",
+      "!**/*.generated.ts"
     ]
   },
   "formatter": {
@@ -23,8 +24,13 @@
     "indentWidth": 2,
     "lineWidth": 100
   },
-  "organizeImports": {
-    "enabled": true
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
   },
   "linter": {
     "enabled": true,
@@ -35,11 +41,7 @@
         "noUnusedVariables": "error"
       },
       "style": {
-        "noNonNullAssertion": "warn",
-        "useConsistentArrayType": {
-          "level": "warn",
-          "options": { "syntax": "shorthand" }
-        }
+        "noNonNullAssertion": "warn"
       },
       "suspicious": {
         "noExplicitAny": "warn"
