@@ -25,6 +25,29 @@ const mimeTypes = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
+const hopByHopRequestHeaders = new Set([
+  'accept-encoding',
+  'cdn-loop',
+  'cf-connecting-ip',
+  'cf-ipcountry',
+  'cf-ray',
+  'cf-visitor',
+  'cf-warp-tag-id',
+  'connection',
+  'content-length',
+  'host',
+  'x-forwarded-for',
+  'x-forwarded-proto',
+]);
+
+const hopByHopResponseHeaders = new Set([
+  'connection',
+  'content-encoding',
+  'content-length',
+  'keep-alive',
+  'transfer-encoding',
+]);
+
 function setSecurityHeaders(response) {
   response.setHeader('Referrer-Policy', 'strict-origin');
   response.setHeader('X-Content-Type-Options', 'nosniff');
@@ -40,6 +63,16 @@ function sendFile(response, filePath, cacheControl) {
   createReadStream(filePath).pipe(response);
 }
 
+async function readRequestBody(request) {
+  const chunks = [];
+
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  return chunks.length > 0 ? Buffer.concat(chunks) : undefined;
+}
+
 async function proxyApiRequest(request, response) {
   const incomingUrl = request.url || '/';
   const rewrittenPath = incomingUrl.replace(/^\/api(?=\/|$)/, '') || '/';
@@ -49,6 +82,7 @@ async function proxyApiRequest(request, response) {
   console.log(`[web-proxy] ${request.method || 'GET'} ${incomingUrl} -> ${targetUrl.toString()}`);
 
   for (const [key, value] of Object.entries(request.headers)) {
+    if (hopByHopRequestHeaders.has(key.toLowerCase())) continue;
     if (value === undefined) continue;
     if (Array.isArray(value)) {
       headers.set(key, value.join(', '));
@@ -57,20 +91,21 @@ async function proxyApiRequest(request, response) {
     headers.set(key, value);
   }
 
-  headers.set('host', targetUrl.host);
+  headers.set('x-forwarded-host', request.headers.host || '');
+  headers.set('x-forwarded-proto', 'https');
 
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
+  const requestBody = hasBody ? await readRequestBody(request) : undefined;
   const upstreamResponse = await fetch(targetUrl, {
     method: request.method,
     headers,
-    body: hasBody ? request : undefined,
-    duplex: hasBody ? 'half' : undefined,
+    body: requestBody,
   });
 
   response.statusCode = upstreamResponse.status;
 
   upstreamResponse.headers.forEach((value, key) => {
-    if (key.toLowerCase() === 'transfer-encoding') return;
+    if (hopByHopResponseHeaders.has(key.toLowerCase())) return;
     response.setHeader(key, value);
   });
 
@@ -111,6 +146,10 @@ const server = createServer(async (request, response) => {
         apiUrl,
         requestPath,
         error: error instanceof Error ? error.message : String(error),
+        cause:
+          error && typeof error === 'object' && 'cause' in error
+            ? String(error.cause)
+            : undefined,
         stack: error instanceof Error ? error.stack : undefined,
       });
       response.statusCode = 502;
