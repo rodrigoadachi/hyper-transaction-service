@@ -57,7 +57,8 @@ COPY --from=pruner /app/out/full .
 RUN pnpm --filter api run build
 
 # ─── Stage 5: runner ─────────────────────────────────────────────────────────
-# Minimal production image — only compiled JS + runtime node_modules
+# Minimal production image — preserve pnpm workspace symlink layout so the
+# app-level node_modules entries keep resolving into the root .pnpm store.
 FROM node:24-alpine AS runner
 
 RUN apk add --no-cache libc6-compat \
@@ -67,17 +68,11 @@ RUN apk add --no-cache libc6-compat \
 
 WORKDIR /app
 
-# Copy compiled application
-COPY --from=builder /app/apps/api/dist ./dist
-
-# Copy runtime node_modules (pnpm workspace root — API has no local @hyper/* deps)
+# Copy the root pnpm store / shared dependencies first.
 COPY --from=builder /app/node_modules ./node_modules
 
-# Copy package.json for module resolution metadata
-COPY --from=builder /app/apps/api/package.json ./package.json
-
-# Copy drizzle migrations (needed by the migration ECS task that uses this image)
-COPY --from=builder /app/apps/api/drizzle ./drizzle
+# Preserve the package directory structure used by pnpm symlinks.
+COPY --from=builder /app/apps/api ./apps/api
 
 USER hyper
 
@@ -86,5 +81,7 @@ EXPOSE 3333
 # Health check — ALB also performs external health checks on /health
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget -qO- http://localhost:3333/health || exit 1
+
+WORKDIR /app/apps/api
 
 CMD ["node", "dist/main"]
