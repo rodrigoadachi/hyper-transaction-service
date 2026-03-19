@@ -5,3 +5,7 @@ export const api = createApp({
   cookieKey: 'hyper_token',
 });
 
+export const publicApi = createApp({
+  baseUrl: '/api',
+});
+

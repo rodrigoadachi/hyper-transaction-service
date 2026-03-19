@@ -102,6 +102,7 @@ async function proxyApiRequest(request, response) {
     }
 
     headers.set('x-registration-token', registrationSecret);
+    console.log('[web-proxy] injected X-Registration-Token for POST /api/auth/register');
   }
 
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
@@ -111,6 +112,10 @@ async function proxyApiRequest(request, response) {
     headers,
     body: requestBody,
   });
+
+  if (isRegisterRequest) {
+    console.log(`[web-proxy] upstream response for POST /api/auth/register: ${upstreamResponse.status}`);
+  }
 
   response.statusCode = upstreamResponse.status;
 
