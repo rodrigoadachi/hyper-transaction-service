@@ -9,11 +9,13 @@ export interface RouterContext {
 	auth: Auth;
 }
 
+const isDevelopment = import.meta.env.DEV;
+
 const RootComponent = () => (
 	<>
 		<Outlet />
-		<TanStackRouterDevtools position="bottom-right" />
-		<ReactQueryDevtools buttonPosition="bottom-left" />
+		{isDevelopment ? <TanStackRouterDevtools position="bottom-right" /> : null}
+		{isDevelopment ? <ReactQueryDevtools buttonPosition="bottom-left" /> : null}
 	</>
 );
 

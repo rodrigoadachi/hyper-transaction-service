@@ -5,6 +5,7 @@ import { extname, join, normalize, resolve } from 'node:path';
 
 const host = '0.0.0.0';
 const port = Number(process.env.PORT || process.env.WEB_PORT || 3000);
+const apiUrl = process.env.API_URL || 'http://localhost:3333';
 const distDir = resolve(process.cwd(), 'dist');
 const indexPath = join(distDir, 'index.html');
 
@@ -39,6 +40,52 @@ function sendFile(response, filePath, cacheControl) {
   createReadStream(filePath).pipe(response);
 }
 
+async function proxyApiRequest(request, response) {
+  const targetUrl = new URL(request.url || '/', apiUrl);
+  const headers = new Headers();
+
+  for (const [key, value] of Object.entries(request.headers)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) {
+      headers.set(key, value.join(', '));
+      continue;
+    }
+    headers.set(key, value);
+  }
+
+  headers.set('host', targetUrl.host);
+
+  const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
+  const upstreamResponse = await fetch(targetUrl, {
+    method: request.method,
+    headers,
+    body: hasBody ? request : undefined,
+    duplex: hasBody ? 'half' : undefined,
+  });
+
+  response.statusCode = upstreamResponse.status;
+
+  upstreamResponse.headers.forEach((value, key) => {
+    if (key.toLowerCase() === 'transfer-encoding') return;
+    response.setHeader(key, value);
+  });
+
+  setSecurityHeaders(response);
+
+  if (!upstreamResponse.body) {
+    response.end();
+    return;
+  }
+
+  const reader = upstreamResponse.body.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    response.write(Buffer.from(value));
+  }
+  response.end();
+}
+
 const server = createServer(async (request, response) => {
   const requestPath = request.url ? request.url.split('?')[0] : '/';
 
@@ -48,6 +95,19 @@ const server = createServer(async (request, response) => {
     response.setHeader('Cache-Control', 'no-store');
     setSecurityHeaders(response);
     response.end('ok');
+    return;
+  }
+
+  if (requestPath.startsWith('/api')) {
+    try {
+      await proxyApiRequest(request, response);
+    } catch {
+      response.statusCode = 502;
+      response.setHeader('Content-Type', 'application/json; charset=utf-8');
+      response.setHeader('Cache-Control', 'no-store');
+      setSecurityHeaders(response);
+      response.end(JSON.stringify({ message: 'Bad Gateway' }));
+    }
     return;
   }
 
