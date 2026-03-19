@@ -32,6 +32,7 @@ const makeTransactionRepository = (): jest.Mocked<ITransactionRepository> => ({
 
 const makeIdempotencyRepository = (): jest.Mocked<IIdempotencyRepository> => ({
   tryAcquire: jest.fn(),
+  getStatus: jest.fn(),
   complete: jest.fn(),
   fail: jest.fn(),
   deleteExpired: jest.fn(),
@@ -93,7 +94,8 @@ describe('CreateTransactionUseCase', () => {
   });
 
   it('should create a transaction and split into two entries', async () => {
-    idempotencyRepository.tryAcquire.mockResolvedValue({ acquired: true, resultId: null });
+    idempotencyRepository.tryAcquire.mockResolvedValue({ acquired: true, resultId: null, status: 'PROCESSING' });
+    idempotencyRepository.getStatus.mockResolvedValue(null);
     transactionRepository.save.mockResolvedValue();
     entryRepository.saveMany.mockResolvedValue();
     transactionRepository.updateStatus.mockResolvedValue();
@@ -128,7 +130,8 @@ describe('CreateTransactionUseCase', () => {
   });
 
   it('should mark transaction as FAILED when saveMany throws', async () => {
-    idempotencyRepository.tryAcquire.mockResolvedValue({ acquired: true, resultId: null });
+    idempotencyRepository.tryAcquire.mockResolvedValue({ acquired: true, resultId: null, status: 'PROCESSING' });
+    idempotencyRepository.getStatus.mockResolvedValue(null);
     transactionRepository.save.mockResolvedValue();
     entryRepository.saveMany.mockRejectedValue(new Error('DB error'));
     transactionRepository.updateStatus.mockResolvedValue();
@@ -145,7 +148,8 @@ describe('CreateTransactionUseCase', () => {
   });
 
   it('should call fail() on idempotency key when processing throws', async () => {
-    idempotencyRepository.tryAcquire.mockResolvedValue({ acquired: true, resultId: null });
+    idempotencyRepository.tryAcquire.mockResolvedValue({ acquired: true, resultId: null, status: 'PROCESSING' });
+    idempotencyRepository.getStatus.mockResolvedValue(null);
     transactionRepository.save.mockResolvedValue();
     entryRepository.saveMany.mockRejectedValue(new Error('DB error'));
     transactionRepository.updateStatus.mockResolvedValue();
@@ -159,8 +163,9 @@ describe('CreateTransactionUseCase', () => {
   it('should process normally on retry after a failed idempotency key', async () => {
     // Simulates: repository reset the FAILED key to PROCESSING and returned acquired=true
     idempotencyRepository.tryAcquire
-      .mockResolvedValueOnce({ acquired: true, resultId: null }) // first attempt
-      .mockResolvedValueOnce({ acquired: true, resultId: null }); // retry (key was FAILED, now reset)
+      .mockResolvedValueOnce({ acquired: true, resultId: null, status: 'PROCESSING' })
+      .mockResolvedValueOnce({ acquired: true, resultId: null, status: 'PROCESSING' });
+    idempotencyRepository.getStatus.mockResolvedValue(null);
     transactionRepository.save.mockResolvedValue();
     entryRepository.saveMany
       .mockRejectedValueOnce(new Error('DB error')) // first attempt fails
@@ -184,6 +189,7 @@ describe('CreateTransactionUseCase', () => {
     idempotencyRepository.tryAcquire.mockResolvedValue({
       acquired: false,
       resultId: '01945cf0-0000-7000-8000-000000000001',
+      status: 'COMPLETED',
     });
     transactionRepository.findById.mockResolvedValue(stored);
 
@@ -195,15 +201,31 @@ describe('CreateTransactionUseCase', () => {
   });
 
   it('should throw IdempotencyConflictError when key is still processing', async () => {
-    idempotencyRepository.tryAcquire.mockResolvedValue({ acquired: false, resultId: null });
+    idempotencyRepository.tryAcquire.mockResolvedValue({ acquired: false, resultId: null, status: 'PROCESSING' });
+    idempotencyRepository.getStatus.mockResolvedValue({ resultId: null, status: 'PROCESSING' });
 
     await expect(useCase.execute(validInput)).rejects.toBeInstanceOf(IdempotencyConflictError);
+  });
+
+  it('should wait for an in-flight request to complete and return the cached transaction', async () => {
+    const stored = makeStoredTransaction();
+    idempotencyRepository.tryAcquire.mockResolvedValue({ acquired: false, resultId: null, status: 'PROCESSING' });
+    idempotencyRepository.getStatus
+      .mockResolvedValueOnce({ resultId: null, status: 'PROCESSING' })
+      .mockResolvedValueOnce({ resultId: stored.id.toString(), status: 'COMPLETED' });
+    transactionRepository.findById.mockResolvedValue(stored);
+
+    const result = await useCase.execute(validInput);
+
+    expect(result.idempotent).toBe(true);
+    expect(result.transaction.id.toString()).toBe(stored.id.toString());
   });
 
   it('should throw NotFoundError when cached transaction is missing from DB', async () => {
     idempotencyRepository.tryAcquire.mockResolvedValue({
       acquired: false,
       resultId: '01945cf0-0000-7000-8000-000000000001',
+      status: 'COMPLETED',
     });
     transactionRepository.findById.mockResolvedValue(null);
 
@@ -211,13 +233,14 @@ describe('CreateTransactionUseCase', () => {
   });
 
   it('should throw when transaction source is invalid', async () => {
-    idempotencyRepository.tryAcquire.mockResolvedValue({ acquired: true, resultId: null });
+    idempotencyRepository.tryAcquire.mockResolvedValue({ acquired: true, resultId: null, status: 'PROCESSING' });
 
     await expect(useCase.execute({ ...validInput, source: 'TRANSFER' as TransactionSource })).rejects.toThrow();
   });
 
   it('should set tenantId from input on the created entity', async () => {
-    idempotencyRepository.tryAcquire.mockResolvedValue({ acquired: true, resultId: null });
+    idempotencyRepository.tryAcquire.mockResolvedValue({ acquired: true, resultId: null, status: 'PROCESSING' });
+    idempotencyRepository.getStatus.mockResolvedValue(null);
     transactionRepository.save.mockResolvedValue();
     entryRepository.saveMany.mockResolvedValue();
     transactionRepository.updateStatus.mockResolvedValue();

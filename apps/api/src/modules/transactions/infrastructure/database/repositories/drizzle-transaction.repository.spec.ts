@@ -47,8 +47,8 @@ describe('DrizzleTransactionRepository', () => {
   describe('save', () => {
     it('should insert transaction using db directly when no tx provided', async () => {
       const insertValues = jest.fn().mockResolvedValue(undefined);
-      const db = { insert: jest.fn().mockReturnValue({ values: insertValues }) } as never;
-      const repo = new DrizzleTransactionRepository(db);
+      const db = { insert: jest.fn().mockReturnValue({ values: insertValues }) };
+      const repo = new DrizzleTransactionRepository(db as never);
 
       await repo.save(makeTransaction());
 
@@ -58,11 +58,11 @@ describe('DrizzleTransactionRepository', () => {
 
     it('should insert transaction using provided tx', async () => {
       const insertValues = jest.fn().mockResolvedValue(undefined);
-      const db = { insert: jest.fn() } as never;
-      const tx = { insert: jest.fn().mockReturnValue({ values: insertValues }) } as never;
-      const repo = new DrizzleTransactionRepository(db);
+      const db = { insert: jest.fn() };
+      const tx = { insert: jest.fn().mockReturnValue({ values: insertValues }) };
+      const repo = new DrizzleTransactionRepository(db as never);
 
-      await repo.save(makeTransaction(), tx);
+      await repo.save(makeTransaction(), tx as never);
 
       expect(tx.insert).toHaveBeenCalled();
     });
@@ -79,13 +79,14 @@ describe('DrizzleTransactionRepository', () => {
             }),
           }),
         }),
-      } as never;
-      const repo = new DrizzleTransactionRepository(db);
+      };
+      const repo = new DrizzleTransactionRepository(db as never);
 
       const result = await repo.findById(UuidVO.fromString(TX_ID), TENANT_ID);
 
       expect(result).toBeInstanceOf(TransactionEntity);
-      expect(result!.id.toString()).toBe(TX_ID);
+      expect(result).not.toBeNull();
+      expect(result?.id.toString()).toBe(TX_ID);
     });
 
     it('should return null when no row is found', async () => {
@@ -97,8 +98,8 @@ describe('DrizzleTransactionRepository', () => {
             }),
           }),
         }),
-      } as never;
-      const repo = new DrizzleTransactionRepository(db);
+      };
+      const repo = new DrizzleTransactionRepository(db as never);
 
       const result = await repo.findById(UuidVO.fromString(TX_ID), TENANT_ID);
 
@@ -131,8 +132,8 @@ describe('DrizzleTransactionRepository', () => {
             }),
           };
         }),
-      } as never;
-      const repo = new DrizzleTransactionRepository(db);
+      };
+      const repo = new DrizzleTransactionRepository(db as never);
 
       const result = await repo.findAll(TENANT_ID, { page: 1, limit: 10, status: undefined, source: undefined });
 
@@ -164,8 +165,8 @@ describe('DrizzleTransactionRepository', () => {
             }),
           };
         }),
-      } as never;
-      const repo = new DrizzleTransactionRepository(db);
+      };
+      const repo = new DrizzleTransactionRepository(db as never);
 
       const result = await repo.findAll(TENANT_ID, {
         page: 1,
@@ -240,15 +241,15 @@ describe('DrizzleTransactionRepository', () => {
 
     it('should use tx when provided', async () => {
       const where = jest.fn().mockResolvedValue(undefined);
-      const db = { update: jest.fn() } as never;
+      const db = { update: jest.fn() };
       const tx = {
         update: jest.fn().mockReturnValue({
           set: jest.fn().mockReturnValue({ where }),
         }),
-      } as never;
-      const repo = new DrizzleTransactionRepository(db);
+      };
+      const repo = new DrizzleTransactionRepository(db as never);
 
-      await repo.updateStatus(UuidVO.fromString(TX_ID), TENANT_ID, TransactionStatus.FAILED, tx);
+      await repo.updateStatus(UuidVO.fromString(TX_ID), TENANT_ID, TransactionStatus.FAILED, tx as never);
 
       expect(tx.update).toHaveBeenCalled();
     });
@@ -259,8 +260,8 @@ describe('DrizzleTransactionRepository', () => {
       const work = jest.fn().mockResolvedValue('result');
       const db = {
         transaction: jest.fn().mockImplementation((fn: (tx: unknown) => unknown) => fn({})),
-      } as never;
-      const repo = new DrizzleTransactionRepository(db);
+      };
+      const repo = new DrizzleTransactionRepository(db as never);
 
       const result = await repo.withTransaction(work);
 

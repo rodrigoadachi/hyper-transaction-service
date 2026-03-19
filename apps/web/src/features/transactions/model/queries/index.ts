@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query';
-import type { CreateTransactionPayload, CreateTransactionResponse, TransactionsPage } from '../types';
+import type { CreateTransactionRequest, CreateTransactionResponse, TransactionsPage } from '../types';
 import { Auth } from '../../../../lib/auth';
 import { createTransactionService, getTransactionsService } from '../services';
 
@@ -15,11 +15,11 @@ export const useTransactionsQuery = (page: number): UseQueryResult<TransactionsP
 export const useCreateTransactionMutate = (): UseMutationResult<
   CreateTransactionResponse,
   Error,
-  CreateTransactionPayload
+  CreateTransactionRequest
 > => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: CreateTransactionPayload) => createTransactionService(payload),
+    mutationFn: (request: CreateTransactionRequest) => createTransactionService(request),
     onSuccess: async () => await queryClient.invalidateQueries({ queryKey: ['transactions'] }),
   });
 };

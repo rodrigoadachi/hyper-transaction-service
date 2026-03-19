@@ -24,13 +24,11 @@ import {
 	type FormEvent,
 	useCallback,
 	useMemo,
-	useOptimistic,
 	useState,
-	useTransition,
 } from "react";
 import { formatCurrency, formatDate } from "../../../utils";
 import { useCreateTransactionMutate, useTransactionsQuery } from "../model/queries";
-import type { CreateTransactionPayload, Transaction } from "../model/types";
+import type { CreateTransactionPayload, CreateTransactionRequest, Transaction } from "../model/types";
 
 const feeInCents = (amount: number): number => Math.round(amount * 0.1);
 
@@ -71,15 +69,13 @@ export const TransactionsView = () => {
 	const [showForm, setShowForm] = useState(false);
 	const [amountDigits, setAmountDigits] = useState("");
 	const [description, setDescription] = useState("");
-	const [isPending, startTransition] = useTransition();
+	const [draftIdempotencyKey, setDraftIdempotencyKey] = useState<string | null>(null);
+	const [formError, setFormError] = useState<string | null>(null);
+	const [optimisticTransactions, setOptimisticTransactions] = useState<Transaction[]>([]);
 
 	const { data, isLoading, error } = useTransactionsQuery(page);
 	const mutation = useCreateTransactionMutate();
-
-	const [optimisticTxs, addOptimisticTx] = useOptimistic(
-		data?.data ?? [],
-		(state: Transaction[], newTx: Transaction) => [newTx, ...state],
-	);
+	const isSubmitting = mutation.isPending;
 
 	const formattedAmount = useMemo(
 		() =>
@@ -93,19 +89,63 @@ export const TransactionsView = () => {
 	);
 
 	const totalPages = useMemo(() => data?.meta.totalPages ?? 1, [data?.meta.totalPages]);
+	const transactions = useMemo(
+		() => [...optimisticTransactions, ...(data?.data ?? [])],
+		[data?.data, optimisticTransactions],
+	);
+	const amountInCents = useMemo(() => Number(amountDigits || "0"), [amountDigits]);
+	const isAmountValid = amountInCents > 0;
 
-	const handleAmountChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-		setAmountDigits(e.target.value.replace(/\D/g, "").slice(0, 10));
+	const resetDraft = useCallback(() => {
+		setAmountDigits("");
+		setDescription("");
+		setDraftIdempotencyKey(null);
+		setFormError(null);
 	}, []);
 
+	const ensureDraftIdempotencyKey = useCallback(() => {
+		if (draftIdempotencyKey) return draftIdempotencyKey;
+		const nextKey = crypto.randomUUID();
+		setDraftIdempotencyKey(nextKey);
+		return nextKey;
+	}, [draftIdempotencyKey]);
+
+	const handleAmountChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+		if (!draftIdempotencyKey) {
+			setDraftIdempotencyKey(crypto.randomUUID());
+		}
+		setFormError(null);
+		setAmountDigits(e.target.value.replace(/\D/g, "").slice(0, 10));
+	}, [draftIdempotencyKey]);
+
 	const handleDescriptionChange = useCallback(
-		(e: ChangeEvent<HTMLInputElement>) => setDescription(e.target.value),
-		[],
+		(e: ChangeEvent<HTMLInputElement>) => {
+			if (!draftIdempotencyKey) {
+				setDraftIdempotencyKey(crypto.randomUUID());
+			}
+			setFormError(null);
+			setDescription(e.target.value);
+		},
+		[draftIdempotencyKey],
 	);
 
-	const handleToggleForm = useCallback(() => setShowForm((v) => !v), []);
+	const handleToggleForm = useCallback(() => {
+		setShowForm((current) => {
+			const next = !current;
+			if (next) {
+				setDraftIdempotencyKey((existing) => existing ?? crypto.randomUUID());
+				setFormError(null);
+			} else {
+				resetDraft();
+			}
+			return next;
+		});
+	}, [resetDraft]);
 
-	const handleCancelForm = useCallback(() => setShowForm(false), []);
+	const handleCancelForm = useCallback(() => {
+		setShowForm(false);
+		resetDraft();
+	}, [resetDraft]);
 
 	const handlePrevPage = useCallback(
 		() => setPage((p) => Math.max(1, p - 1)),
@@ -118,17 +158,28 @@ export const TransactionsView = () => {
 	);
 
 	const handleSubmit = useCallback(
-		(e: FormEvent) => {
+		async (e: FormEvent) => {
 			e.preventDefault();
+
+			if (!isAmountValid) {
+				setFormError("Informe um valor maior que zero.");
+				return;
+			}
+
+			const idempotencyKey = ensureDraftIdempotencyKey();
 			const payload: CreateTransactionPayload = {
-				amountInCents: Number(amountDigits),
+				amountInCents,
 				description: description || undefined,
 				source: "MANUAL",
 			};
+			const request: CreateTransactionRequest = {
+				idempotencyKey,
+				payload,
+			};
 			const optimisticTx: Transaction = {
-				id: `opt-${Date.now()}`,
+				id: `opt-${idempotencyKey}`,
 				tenantId: "",
-				amountInCents: Number(amountDigits),
+				amountInCents,
 				currency: "BRL",
 				source: "MANUAL",
 				description: description || null,
@@ -139,15 +190,25 @@ export const TransactionsView = () => {
 				updatedAt: new Date().toISOString(),
 				processedAt: null,
 			};
-			startTransition(async () => {
-				addOptimisticTx(optimisticTx);
-				await mutation.mutateAsync(payload);
-				setAmountDigits("");
-				setDescription("");
+
+			setFormError(null);
+			setOptimisticTransactions((current) => [optimisticTx, ...current.filter((tx) => tx.id !== optimisticTx.id)]);
+
+			try {
+				await mutation.mutateAsync(request);
+				setOptimisticTransactions((current) => current.filter((tx) => tx.id !== optimisticTx.id));
 				setShowForm(false);
-			});
+				resetDraft();
+			} catch (submitError) {
+				setOptimisticTransactions((current) => current.filter((tx) => tx.id !== optimisticTx.id));
+				setFormError(
+					submitError instanceof Error
+						? submitError.message
+						: "Nao foi possivel criar a transacao.",
+				);
+			}
 		},
-		[amountDigits, description, mutation, addOptimisticTx],
+		[amountInCents, description, ensureDraftIdempotencyKey, isAmountValid, mutation, resetDraft],
 	);
 
 	return (
@@ -183,10 +244,10 @@ export const TransactionsView = () => {
 						<Separator />
 						<CardContent className="py-5">
 							<form onSubmit={handleSubmit} className="flex flex-col gap-4">
-								{mutation.isError && (
+								{formError && (
 									<Alert variant="destructive">
 										<AlertDescription>
-											{(mutation.error as Error).message}
+											{formError}
 										</AlertDescription>
 									</Alert>
 								)}
@@ -215,9 +276,9 @@ export const TransactionsView = () => {
 										onClick={handleCancelForm}
 									/>
 									<Button
-										label={isPending ? "Processando..." : "Criar Transação"}
+										label={isSubmitting ? "Processando..." : "Criar Transação"}
 										type="submit"
-										disabled={isPending || !amountDigits}
+										disabled={isSubmitting || !amountDigits || !isAmountValid}
 									/>
 								</div>
 							</form>
@@ -269,10 +330,10 @@ export const TransactionsView = () => {
 									</TableRow>
 								</TableHeader>
 								<TableBody>
-									{optimisticTxs.map((tx) => (
+									{transactions.map((tx) => (
 										<TxRow key={tx.id} tx={tx} />
 									))}
-									{optimisticTxs.length === 0 && (
+									{transactions.length === 0 && (
 										<TableRow>
 											<TableCell
 												colSpan={8}

@@ -1,6 +1,5 @@
 import { BcryptPepperHasher } from './bcrypt-pepper.hasher';
 import type { ConfigService } from '@nestjs/config';
-import * as bcrypt from 'bcrypt';
 
 function makeConfig(pepper = 'test-pepper', rounds = 10): jest.Mocked<ConfigService> {
   return {

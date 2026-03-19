@@ -13,6 +13,7 @@ import {
 function makeHost(responseMock: { status: jest.Mock; json: jest.Mock }): ArgumentsHost {
   return {
     switchToHttp: () => ({
+      getRequest: () => ({ method: 'GET', url: '/test' }),
       getResponse: () => ({
         status: (code: number) => {
           responseMock.status(code);

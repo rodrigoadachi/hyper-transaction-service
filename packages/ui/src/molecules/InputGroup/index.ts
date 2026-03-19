@@ -1,1 +1,7 @@
-export { InputGroup, InputGroupAddon, InputGroupText, InputGroupInput, InputGroupTextarea } from './InputGroup';
+export {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+  InputGroupTextarea,
+} from './InputGroup';

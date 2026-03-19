@@ -10,6 +10,7 @@ const TENANT_ID = 'tenant-abc';
 function makeEntry(): TransactionEntryEntity {
   return TransactionEntryEntity.reconstitute({
     id: ENTRY_ID,
+    tenantId: TENANT_ID,
     transactionId: TX_ID,
     type: TransactionEntryType.TENANT_REVENUE,
     amountInCents: 9000,
@@ -21,8 +22,8 @@ function makeEntry(): TransactionEntryEntity {
 describe('DrizzleTransactionEntryRepository', () => {
   describe('saveMany', () => {
     it('should do nothing when entries array is empty', async () => {
-      const db = { insert: jest.fn() } as never;
-      const repo = new DrizzleTransactionEntryRepository(db);
+      const db = { insert: jest.fn() };
+      const repo = new DrizzleTransactionEntryRepository(db as never);
 
       await repo.saveMany([]);
 
@@ -31,8 +32,8 @@ describe('DrizzleTransactionEntryRepository', () => {
 
     it('should insert entries using db directly when no tx provided', async () => {
       const values = jest.fn().mockResolvedValue(undefined);
-      const db = { insert: jest.fn().mockReturnValue({ values }) } as never;
-      const repo = new DrizzleTransactionEntryRepository(db);
+      const db = { insert: jest.fn().mockReturnValue({ values }) };
+      const repo = new DrizzleTransactionEntryRepository(db as never);
 
       await repo.saveMany([makeEntry()]);
 
@@ -42,22 +43,23 @@ describe('DrizzleTransactionEntryRepository', () => {
 
     it('should insert entries using provided tx', async () => {
       const values = jest.fn().mockResolvedValue(undefined);
-      const db = { insert: jest.fn() } as never;
-      const tx = { insert: jest.fn().mockReturnValue({ values }) } as never;
-      const repo = new DrizzleTransactionEntryRepository(db);
+      const db = { insert: jest.fn() };
+      const tx = { insert: jest.fn().mockReturnValue({ values }) };
+      const repo = new DrizzleTransactionEntryRepository(db as never);
 
-      await repo.saveMany([makeEntry()], tx);
+      await repo.saveMany([makeEntry()], tx as never);
 
       expect(tx.insert).toHaveBeenCalled();
     });
 
     it('should map entries with null description to undefined', async () => {
       const values = jest.fn().mockResolvedValue(undefined);
-      const db = { insert: jest.fn().mockReturnValue({ values }) } as never;
-      const repo = new DrizzleTransactionEntryRepository(db);
+      const db = { insert: jest.fn().mockReturnValue({ values }) };
+      const repo = new DrizzleTransactionEntryRepository(db as never);
 
       const entry = TransactionEntryEntity.reconstitute({
         id: ENTRY_ID,
+        tenantId: TENANT_ID,
         transactionId: TX_ID,
         type: TransactionEntryType.PLATFORM_FEE,
         amountInCents: 1000,
@@ -69,6 +71,7 @@ describe('DrizzleTransactionEntryRepository', () => {
 
       const mappedEntry = values.mock.calls[0][0][0];
       expect(mappedEntry.description).toBeUndefined();
+      expect(mappedEntry.tenantId).toBe(TENANT_ID);
     });
   });
 
@@ -76,6 +79,7 @@ describe('DrizzleTransactionEntryRepository', () => {
     it('should return mapped TransactionEntryEntity array', async () => {
       const row = {
         id: ENTRY_ID,
+        tenantId: TENANT_ID,
         transactionId: TX_ID,
         type: TransactionEntryType.TENANT_REVENUE as string,
         amount: 9000,
@@ -88,14 +92,15 @@ describe('DrizzleTransactionEntryRepository', () => {
             where: jest.fn().mockResolvedValue([row]),
           }),
         }),
-      } as never;
-      const repo = new DrizzleTransactionEntryRepository(db);
+      };
+      const repo = new DrizzleTransactionEntryRepository(db as never);
 
       const result = await repo.findByTransactionId(UuidVO.fromString(TX_ID), TENANT_ID);
 
       expect(result).toHaveLength(1);
       expect(result[0]).toBeInstanceOf(TransactionEntryEntity);
       expect(result[0].transactionId).toBe(TX_ID);
+      expect(result[0].tenantId).toBe(TENANT_ID);
     });
 
     it('should return empty array when no entries found', async () => {
@@ -105,8 +110,8 @@ describe('DrizzleTransactionEntryRepository', () => {
             where: jest.fn().mockResolvedValue([]),
           }),
         }),
-      } as never;
-      const repo = new DrizzleTransactionEntryRepository(db);
+      };
+      const repo = new DrizzleTransactionEntryRepository(db as never);
 
       const result = await repo.findByTransactionId(UuidVO.fromString(TX_ID), TENANT_ID);
 
@@ -116,6 +121,7 @@ describe('DrizzleTransactionEntryRepository', () => {
     it('should map null description to null in entity', async () => {
       const row = {
         id: ENTRY_ID,
+        tenantId: TENANT_ID,
         transactionId: TX_ID,
         type: TransactionEntryType.PLATFORM_FEE as string,
         amount: 1000,
@@ -128,8 +134,8 @@ describe('DrizzleTransactionEntryRepository', () => {
             where: jest.fn().mockResolvedValue([row]),
           }),
         }),
-      } as never;
-      const repo = new DrizzleTransactionEntryRepository(db);
+      };
+      const repo = new DrizzleTransactionEntryRepository(db as never);
 
       const result = await repo.findByTransactionId(UuidVO.fromString(TX_ID), TENANT_ID);
 

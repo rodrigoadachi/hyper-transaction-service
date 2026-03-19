@@ -101,4 +101,101 @@ describe('ListTransactionsUseCase', () => {
     expect(result.data).toHaveLength(0);
     expect(result.meta.total).toBe(0);
   });
+
+  it('should return result from cache when cache hit occurs', async () => {
+    const now = new Date('2026-01-01T10:00:00.000Z');
+    const cachedResult = {
+      data: [
+        {
+          id: '01945cf0-0000-7000-8000-000000000001',
+          tenantId: TENANT_ID,
+          idempotencyKey: 'key-001',
+          amountInCents: 15000,
+          currency: 'BRL',
+          source: TransactionSource.MANUAL as string,
+          description: null,
+          status: TransactionStatus.PENDING as string,
+          externalRef: null,
+          metadata: null,
+          createdAt: now.toISOString(),
+          updatedAt: now.toISOString(),
+          processedAt: null,
+        },
+      ],
+      meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+    };
+    cacheService.get.mockResolvedValue(cachedResult);
+
+    const result = await useCase.execute({ tenantId: TENANT_ID, page: 1, limit: 20 });
+
+    expect(result.data).toHaveLength(1);
+    expect(result.meta.total).toBe(1);
+    expect(result.data[0]).toBeInstanceOf(TransactionEntity);
+    expect(transactionRepository.findAll).not.toHaveBeenCalled();
+  });
+
+  it('should reconstitute cached transaction with processedAt when set', async () => {
+    const now = new Date('2026-01-01T10:00:00.000Z');
+    const cachedResult = {
+      data: [
+        {
+          id: '01945cf0-0000-7000-8000-000000000001',
+          tenantId: TENANT_ID,
+          idempotencyKey: 'key-001',
+          amountInCents: 15000,
+          currency: 'BRL',
+          source: TransactionSource.MANUAL as string,
+          description: 'a payment',
+          status: TransactionStatus.COMPLETED as string,
+          externalRef: 'ext-ref-1',
+          metadata: { ref: 'abc' },
+          createdAt: now.toISOString(),
+          updatedAt: now.toISOString(),
+          processedAt: now.toISOString(),
+        },
+      ],
+      meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+    };
+    cacheService.get.mockResolvedValue(cachedResult);
+
+    const result = await useCase.execute({ tenantId: TENANT_ID, page: 1, limit: 20 });
+
+    expect(result.data[0].processedAt).toBeInstanceOf(Date);
+    expect(transactionRepository.findAll).not.toHaveBeenCalled();
+  });
+
+  it('should serialize processedAt as null when not set', async () => {
+    const tx = makeTransaction({ processedAt: null });
+    transactionRepository.findAll.mockResolvedValue(makePaginatedResult([tx]));
+
+    await useCase.execute({ tenantId: TENANT_ID, page: 1, limit: 20 });
+
+    expect(cacheService.set).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({ processedAt: null }),
+        ]),
+      }),
+      30,
+    );
+  });
+
+  it('should serialize processedAt as ISO string when set', async () => {
+    const processedAt = new Date('2026-01-01T12:00:00.000Z');
+    const tx = makeTransaction({ processedAt, status: TransactionStatus.COMPLETED });
+    transactionRepository.findAll.mockResolvedValue(makePaginatedResult([tx]));
+
+    await useCase.execute({ tenantId: TENANT_ID, page: 1, limit: 20 });
+
+    expect(cacheService.set).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({ processedAt: processedAt.toISOString() }),
+        ]),
+      }),
+      30,
+    );
+  });
 });

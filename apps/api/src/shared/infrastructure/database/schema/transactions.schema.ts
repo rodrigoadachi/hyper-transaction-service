@@ -59,6 +59,7 @@ export const transactionEntriesTable = pgTable(
   'transaction_entries',
   {
     id: uuid('id').primaryKey(),
+    tenantId: uuid('tenant_id').notNull(),
     transactionId: uuid('transaction_id')
       .notNull()
       .references(() => transactionsTable.id),
@@ -71,6 +72,7 @@ export const transactionEntriesTable = pgTable(
   },
   (t) => [
     index('idx_transaction_entries_transaction').on(t.transactionId),
+    index('idx_transaction_entries_tenant_transaction').on(t.tenantId, t.transactionId),
   ],
 );
 

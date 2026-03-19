@@ -1,16 +1,12 @@
+import { Toolbar as ToolbarPrimitive } from '@base-ui/react/toolbar';
+import type React from 'react';
+import { cn } from '../../lib/utils';
 
-import { Toolbar as ToolbarPrimitive } from "@base-ui/react/toolbar";
-import type React from "react";
-import { cn } from "../../lib/utils";
-
-export function Toolbar({
-  className,
-  ...props
-}: ToolbarPrimitive.Root.Props): React.ReactElement {
+export function Toolbar({ className, ...props }: ToolbarPrimitive.Root.Props): React.ReactElement {
   return (
     <ToolbarPrimitive.Root
       className={cn(
-        "relative flex gap-2 rounded-xl border bg-card not-dark:bg-clip-padding p-1 text-card-foreground",
+        'relative flex gap-2 rounded-xl border bg-card not-dark:bg-clip-padding p-1 text-card-foreground',
         className,
       )}
       data-slot="toolbar"
@@ -24,11 +20,7 @@ export function ToolbarButton({
   ...props
 }: ToolbarPrimitive.Button.Props): React.ReactElement {
   return (
-    <ToolbarPrimitive.Button
-      className={cn(className)}
-      data-slot="toolbar-button"
-      {...props}
-    />
+    <ToolbarPrimitive.Button className={cn(className)} data-slot="toolbar-button" {...props} />
   );
 }
 
@@ -36,26 +28,14 @@ export function ToolbarLink({
   className,
   ...props
 }: ToolbarPrimitive.Link.Props): React.ReactElement {
-  return (
-    <ToolbarPrimitive.Link
-      className={cn(className)}
-      data-slot="toolbar-link"
-      {...props}
-    />
-  );
+  return <ToolbarPrimitive.Link className={cn(className)} data-slot="toolbar-link" {...props} />;
 }
 
 export function ToolbarInput({
   className,
   ...props
 }: ToolbarPrimitive.Input.Props): React.ReactElement {
-  return (
-    <ToolbarPrimitive.Input
-      className={cn(className)}
-      data-slot="toolbar-input"
-      {...props}
-    />
-  );
+  return <ToolbarPrimitive.Input className={cn(className)} data-slot="toolbar-input" {...props} />;
 }
 
 export function ToolbarGroup({
@@ -64,7 +44,7 @@ export function ToolbarGroup({
 }: ToolbarPrimitive.Group.Props): React.ReactElement {
   return (
     <ToolbarPrimitive.Group
-      className={cn("flex items-center gap-1", className)}
+      className={cn('flex items-center gap-1', className)}
       data-slot="toolbar-group"
       {...props}
     />

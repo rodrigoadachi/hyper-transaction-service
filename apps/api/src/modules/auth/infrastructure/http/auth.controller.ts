@@ -6,11 +6,13 @@ import {
   HttpStatus,
   Post,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBody,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiHeader,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -23,6 +25,7 @@ import { ZodValidationPipe } from '../../../../shared/infrastructure/pipes/zod-v
 import { registerSchema, type RegisterDto } from './dtos/register.dto';
 import { loginSchema, type LoginDto } from './dtos/login.dto';
 import { ConflictError, UnauthorizedError } from '../../../../shared/domain/errors';
+import { RegistrationGuard } from '../guards/registration.guard';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -34,11 +37,17 @@ export class AuthController {
 
   // ── POST /auth/register ───────────────────────────────────────────────────
   @Post('register')
+  @UseGuards(RegistrationGuard)
   @ApiOperation({
     summary: 'Registrar novo usuário',
     description:
       'Cria uma nova conta de usuário.\n\n' +
       '**Regras de senha:** mínimo 8 caracteres, ao menos 1 letra maiúscula e 1 número.',
+  })
+  @ApiHeader({
+    name: 'X-Registration-Token',
+    description: 'Segredo pré-compartilhado exigido para habilitar o cadastro',
+    required: true,
   })
   @ApiBody({
     description: 'Credenciais do novo usuário',
@@ -110,6 +119,9 @@ export class AuthController {
         },
       },
     },
+  })
+  @ApiUnauthorizedResponse({
+    description: 'X-Registration-Token ausente ou inválido',
   })
   async register(
     @Body(new ZodValidationPipe(registerSchema)) dto: RegisterDto,

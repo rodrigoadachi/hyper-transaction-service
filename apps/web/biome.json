@@ -1,6 +1,11 @@
 {
 	"$schema": "https://biomejs.dev/schemas/2.4.7/schema.json",
 	"extends": ["@hyper/biome-config/react.json"],
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		}
+	},
 	"files": {
 		"includes": ["src/**", "!src/routeTree.gen.ts"]
 	}

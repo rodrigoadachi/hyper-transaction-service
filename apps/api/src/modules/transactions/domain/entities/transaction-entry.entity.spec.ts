@@ -5,6 +5,7 @@ describe('TransactionEntryEntity', () => {
   describe('create', () => {
     it('should create entry with generated id and current date', () => {
       const entry = TransactionEntryEntity.create({
+        tenantId: 'tenant-001',
         transactionId: 'tx-001',
         type: TransactionEntryType.TENANT_REVENUE,
         amountInCents: 9000,
@@ -17,10 +18,12 @@ describe('TransactionEntryEntity', () => {
       expect(entry.description).toBe('Tenant revenue');
       expect(entry.id).toBeDefined();
       expect(entry.createdAt).toBeInstanceOf(Date);
+      expect(entry.tenantId).toBe('tenant-001');
     });
 
     it('should default description to null when not provided', () => {
       const entry = TransactionEntryEntity.create({
+        tenantId: 'tenant-001',
         transactionId: 'tx-001',
         type: TransactionEntryType.PLATFORM_FEE,
         amountInCents: 1000,
@@ -31,6 +34,7 @@ describe('TransactionEntryEntity', () => {
 
     it('should set description to null when explicitly null', () => {
       const entry = TransactionEntryEntity.create({
+        tenantId: 'tenant-001',
         transactionId: 'tx-001',
         type: TransactionEntryType.PLATFORM_FEE,
         amountInCents: 1000,
@@ -47,6 +51,7 @@ describe('TransactionEntryEntity', () => {
 
       const entry = TransactionEntryEntity.reconstitute({
         id: '01945cf0-0000-7000-8000-000000000001',
+        tenantId: 'tenant-001',
         transactionId: 'tx-001',
         type: TransactionEntryType.TENANT_REVENUE,
         amountInCents: 9000,
@@ -65,6 +70,7 @@ describe('TransactionEntryEntity', () => {
     it('should reconstitute entry with null description', () => {
       const entry = TransactionEntryEntity.reconstitute({
         id: '01945cf0-0000-7000-8000-000000000001',
+        tenantId: 'tenant-001',
         transactionId: 'tx-002',
         type: TransactionEntryType.PLATFORM_FEE,
         amountInCents: 1000,

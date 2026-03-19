@@ -1,6 +1,6 @@
+import type { useRender } from '@base-ui/react/use-render';
 import { Input, type InputProps } from '../../atoms/Input';
 import { Label } from '../../atoms/Label';
-import type { useRender } from '@base-ui/react/use-render';
 import { cn } from '../../lib/utils';
 
 type LabelProps = useRender.ComponentProps<'label'>;

@@ -1,1 +1,1 @@
-export { Frame, FramePanel, FrameHeader, FrameTitle, FrameDescription, FrameFooter } from './Frame';
+export { Frame, FrameDescription, FrameFooter, FrameHeader, FramePanel, FrameTitle } from './Frame';

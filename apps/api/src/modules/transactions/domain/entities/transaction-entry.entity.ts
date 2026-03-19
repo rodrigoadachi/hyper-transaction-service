@@ -2,6 +2,7 @@ import { UuidVO } from '../../../../shared/domain/value-objects/uuid.vo';
 import type { TransactionEntryType } from '../value-objects/transaction-entry-type.vo';
 
 export interface CreateTransactionEntryParams {
+  readonly tenantId: string;
   readonly transactionId: string;
   readonly type: TransactionEntryType;
   readonly amountInCents: number;
@@ -10,6 +11,7 @@ export interface CreateTransactionEntryParams {
 
 export interface ReconstituteTransactionEntryParams {
   readonly id: string;
+  readonly tenantId: string;
   readonly transactionId: string;
   readonly type: TransactionEntryType;
   readonly amountInCents: number;
@@ -20,6 +22,7 @@ export interface ReconstituteTransactionEntryParams {
 export class TransactionEntryEntity {
   private constructor(
     readonly id: UuidVO,
+    readonly tenantId: string,
     readonly transactionId: string,
     readonly type: TransactionEntryType,
     readonly amountInCents: number,
@@ -30,6 +33,7 @@ export class TransactionEntryEntity {
   static create(params: CreateTransactionEntryParams): TransactionEntryEntity {
     return new TransactionEntryEntity(
       UuidVO.generate(),
+      params.tenantId,
       params.transactionId,
       params.type,
       params.amountInCents,
@@ -41,6 +45,7 @@ export class TransactionEntryEntity {
   static reconstitute(params: ReconstituteTransactionEntryParams): TransactionEntryEntity {
     return new TransactionEntryEntity(
       UuidVO.fromString(params.id),
+      params.tenantId,
       params.transactionId,
       params.type,
       params.amountInCents,

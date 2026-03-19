@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { DRIZZLE_TOKEN, type DrizzleDb } from '../../../../../shared/infrastructure/database/drizzle.provider';
 import { transactionEntriesTable } from '../../../../../shared/infrastructure/database/schema';
 import { TransactionEntryEntity } from '../../../domain/entities/transaction-entry.entity';
@@ -20,6 +20,7 @@ export class DrizzleTransactionEntryRepository implements ITransactionEntryRepos
     await db.insert(transactionEntriesTable).values(
       entries.map((entry) => ({
         id: entry.id.toString(),
+        tenantId: entry.tenantId,
         transactionId: entry.transactionId,
         type: entry.type,
         amount: entry.amountInCents,
@@ -33,7 +34,12 @@ export class DrizzleTransactionEntryRepository implements ITransactionEntryRepos
     const rows = await this.db
       .select()
       .from(transactionEntriesTable)
-      .where(eq(transactionEntriesTable.transactionId, transactionId.toString()));
+      .where(
+        and(
+          eq(transactionEntriesTable.transactionId, transactionId.toString()),
+          eq(transactionEntriesTable.tenantId, _tenantId),
+        ),
+      );
 
     return rows.map((row) => this.toEntity(row));
   }
@@ -41,6 +47,7 @@ export class DrizzleTransactionEntryRepository implements ITransactionEntryRepos
   private toEntity(row: TransactionEntryRow): TransactionEntryEntity {
     return TransactionEntryEntity.reconstitute({
       id: row.id,
+      tenantId: row.tenantId,
       transactionId: row.transactionId,
       type: row.type as TransactionEntryType,
       amountInCents: row.amount,

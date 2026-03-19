@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { TRANSACTION_TOKENS } from '../../transactions.tokens';
 import { NotFoundError } from '../../../../shared/domain/errors';
 import { UuidVO } from '../../../../shared/domain/value-objects/uuid.vo';
+import { RequestContext } from '../../../../shared/infrastructure/http/request-context';
 import type { ITransactionRepository } from '../ports/transaction-repository.port';
 import type { ITransactionEntryRepository } from '../ports/transaction-entry-repository.port';
 import type { TransactionEntity } from '../../domain/entities/transaction.entity';
@@ -48,6 +49,7 @@ export class GetTransactionUseCase {
 
     this.logger.log({
       event: 'transaction.fetched',
+      ...RequestContext.snapshot(),
       transactionId: input.id,
       tenantId: input.tenantId,
       durationMs: Date.now() - start,

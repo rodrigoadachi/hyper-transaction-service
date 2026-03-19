@@ -33,7 +33,8 @@ describe('DrizzleUserRepository', () => {
       const result = await repo.findByEmail(EmailVO.create('alice@example.com'));
 
       expect(result).toBeInstanceOf(UserEntity);
-      expect(result!.id.toString()).toBe(USER_ID);
+      expect(result).not.toBeNull();
+      expect(result?.id.toString()).toBe(USER_ID);
     });
 
     it('should return null when user is not found', async () => {

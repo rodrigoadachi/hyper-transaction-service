@@ -6,23 +6,58 @@ import { UuidVO } from '../../../../../shared/domain/value-objects/uuid.vo';
 import type {
   IIdempotencyRepository,
   IdempotencyAcquireResult,
+  IdempotencyStatusResult,
 } from '../../../application/ports/idempotency-repository.port';
 
 @Injectable()
 export class DrizzleIdempotencyRepository implements IIdempotencyRepository {
   constructor(@Inject(DRIZZLE_TOKEN) private readonly db: DrizzleDb) {}
 
-  async tryAcquire(tenantId: string, key: string, expiresAt: Date): Promise<IdempotencyAcquireResult> {
+  async tryAcquire(
+    tenantId: string,
+    key: string,
+    expiresAt: Date,
+    tx?: unknown,
+  ): Promise<IdempotencyAcquireResult> {
+    const db = (tx as DrizzleDb | undefined) ?? this.db;
     const id = UuidVO.generate().toString();
 
-    const inserted = await this.db
+    const inserted = await db
       .insert(idempotencyKeysTable)
       .values({ id, tenantId, key, status: 'PROCESSING', expiresAt })
       .onConflictDoNothing()
       .returning({ id: idempotencyKeysTable.id });
 
-    if (inserted.length > 0) return { acquired: true, resultId: null };
+    if (inserted.length > 0) {
+      return { acquired: true, resultId: null, status: 'PROCESSING' };
+    }
 
+    const reclaimed = await db
+      .update(idempotencyKeysTable)
+      .set({ status: 'PROCESSING', resultId: null, expiresAt })
+      .where(
+        and(
+          eq(idempotencyKeysTable.tenantId, tenantId),
+          eq(idempotencyKeysTable.key, key),
+          eq(idempotencyKeysTable.status, 'FAILED'),
+        ),
+      )
+      .returning({ id: idempotencyKeysTable.id });
+
+    if (reclaimed.length > 0) {
+      return { acquired: true, resultId: null, status: 'PROCESSING' };
+    }
+
+    const existing = await this.getStatus(tenantId, key);
+
+    return {
+      acquired: false,
+      resultId: existing?.resultId ?? null,
+      status: existing?.status ?? null,
+    };
+  }
+
+  async getStatus(tenantId: string, key: string): Promise<IdempotencyStatusResult | null> {
     const [existing] = await this.db
       .select({ resultId: idempotencyKeysTable.resultId, status: idempotencyKeysTable.status })
       .from(idempotencyKeysTable)
@@ -34,22 +69,11 @@ export class DrizzleIdempotencyRepository implements IIdempotencyRepository {
       )
       .limit(1);
 
-    if (existing?.status === 'FAILED') {
-      await this.db
-        .update(idempotencyKeysTable)
-        .set({ status: 'PROCESSING', resultId: null, expiresAt })
-        .where(
-          and(
-            eq(idempotencyKeysTable.tenantId, tenantId),
-            eq(idempotencyKeysTable.key, key),
-          ),
-        );
-      return { acquired: true, resultId: null };
-    }
+    if (!existing) return null;
 
     return {
-      acquired: false,
-      resultId: existing?.resultId ?? null,
+      resultId: existing.resultId,
+      status: existing.status as IdempotencyStatusResult['status'],
     };
   }
 
@@ -66,14 +90,16 @@ export class DrizzleIdempotencyRepository implements IIdempotencyRepository {
       );
   }
 
-  async fail(tenantId: string, key: string): Promise<void> {
-    await this.db
+  async fail(tenantId: string, key: string, tx?: unknown): Promise<void> {
+    const db = (tx as DrizzleDb | undefined) ?? this.db;
+    await db
       .update(idempotencyKeysTable)
       .set({ status: 'FAILED' })
       .where(
         and(
           eq(idempotencyKeysTable.tenantId, tenantId),
           eq(idempotencyKeysTable.key, key),
+          eq(idempotencyKeysTable.status, 'PROCESSING'),
         ),
       );
   }

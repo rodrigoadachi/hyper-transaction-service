@@ -8,6 +8,11 @@ export type CreateTransactionPayload = {
   readonly description?: string;
 };
 
+export type CreateTransactionRequest = {
+  readonly idempotencyKey: string;
+  readonly payload: CreateTransactionPayload;
+};
+
 export type CreateTransactionResponse = {
   data: Transaction;
   cached?: boolean;

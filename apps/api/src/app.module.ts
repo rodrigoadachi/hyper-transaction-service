@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { resolve } from 'node:path';
 import { LoggerModule } from 'nestjs-pino';
@@ -11,6 +12,7 @@ import { HealthModule } from './modules/health/health.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { DrizzleModule } from './shared/infrastructure/database/drizzle.module';
 import { RedisModule } from './shared/infrastructure/redis/redis.module';
+import { CorrelationIdInterceptor } from './shared/infrastructure/http/correlation-id.interceptor';
 import { validateEnv, type Env } from './config/env';
 import { TRANSACTIONS_QUEUE } from './modules/transactions/infrastructure/queue/transactions-queue.constants';
 
@@ -72,6 +74,12 @@ const monorepoRoot = resolve(process.cwd(), '../../');
     AuthModule,
     HealthModule,
     TransactionsModule,
+  ],
+  providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: CorrelationIdInterceptor,
+    },
   ],
 })
 export class AppModule {}

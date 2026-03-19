@@ -26,7 +26,7 @@ import {
   ApiUnauthorizedResponse,
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../../../auth/infrastructure/jwt/jwt-auth.guard';
 import { CreateTransactionUseCase } from '../../application/use-cases/create-transaction.use-case';
 import { ListTransactionsUseCase } from '../../application/use-cases/list-transactions.use-case';

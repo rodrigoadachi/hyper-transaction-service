@@ -3,6 +3,13 @@ export interface IdempotencyAcquireResult {
   readonly acquired: boolean;
   /** ID of the already-created transaction (present only when acquired=false and processing is done) */
   readonly resultId: string | null;
+  /** Current state stored for the idempotency key. */
+  readonly status: 'PROCESSING' | 'COMPLETED' | 'FAILED' | null;
+}
+
+export interface IdempotencyStatusResult {
+  readonly resultId: string | null;
+  readonly status: 'PROCESSING' | 'COMPLETED' | 'FAILED';
 }
 
 export interface IIdempotencyRepository {
@@ -12,13 +19,16 @@ export interface IIdempotencyRepository {
    * Returns { acquired: false, resultId } if the key already exists.
    * If the key exists with status FAILED, resets it to PROCESSING and returns { acquired: true }.
    */
-  tryAcquire(tenantId: string, key: string, expiresAt: Date): Promise<IdempotencyAcquireResult>;
+  tryAcquire(tenantId: string, key: string, expiresAt: Date, tx?: unknown): Promise<IdempotencyAcquireResult>;
+
+  /** Reads the current state for an existing key. */
+  getStatus(tenantId: string, key: string): Promise<IdempotencyStatusResult | null>;
 
   /** Marks the key as COMPLETED and records the resultId (transaction ID). */
   complete(tenantId: string, key: string, resultId: string, tx?: unknown): Promise<void>;
 
   /** Marks the key as FAILED, allowing clients to retry with the same key. */
-  fail(tenantId: string, key: string): Promise<void>;
+  fail(tenantId: string, key: string, tx?: unknown): Promise<void>;
 
   /**
    * Deletes expired idempotency keys in batches to avoid long-running transactions.

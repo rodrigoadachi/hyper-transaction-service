@@ -33,6 +33,7 @@ function makeTransaction(): TransactionEntity {
 function makeEntry(): TransactionEntryEntity {
   return TransactionEntryEntity.reconstitute({
     id: '01945cf0-0000-7000-8000-000000000002',
+    tenantId: TENANT_ID,
     transactionId: TX_ID,
     type: TransactionEntryType.TENANT_REVENUE,
     amountInCents: 9000,

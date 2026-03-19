@@ -15,13 +15,14 @@ describe('DrizzleIdempotencyRepository', () => {
             }),
           }),
         }),
-      } as never;
-      const repo = new DrizzleIdempotencyRepository(db);
+      };
+      const repo = new DrizzleIdempotencyRepository(db as never);
 
       const result = await repo.tryAcquire(TENANT_ID, KEY, new Date());
 
       expect(result.acquired).toBe(true);
       expect(result.resultId).toBeNull();
+      expect(result.status).toBe('PROCESSING');
     });
 
     it('should return acquired=false with resultId when key exists and status is COMPLETED', async () => {
@@ -29,6 +30,13 @@ describe('DrizzleIdempotencyRepository', () => {
         insert: jest.fn().mockReturnValue({
           values: jest.fn().mockReturnValue({
             onConflictDoNothing: jest.fn().mockReturnValue({
+              returning: jest.fn().mockResolvedValue([]),
+            }),
+          }),
+        }),
+        update: jest.fn().mockReturnValue({
+          set: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnValue({
               returning: jest.fn().mockResolvedValue([]),
             }),
           }),
@@ -47,6 +55,7 @@ describe('DrizzleIdempotencyRepository', () => {
 
       expect(result.acquired).toBe(false);
       expect(result.resultId).toBe(RESULT_ID);
+      expect(result.status).toBe('COMPLETED');
     });
 
     it('should return acquired=false with null resultId when key exists and status is PROCESSING', async () => {
@@ -54,6 +63,13 @@ describe('DrizzleIdempotencyRepository', () => {
         insert: jest.fn().mockReturnValue({
           values: jest.fn().mockReturnValue({
             onConflictDoNothing: jest.fn().mockReturnValue({
+              returning: jest.fn().mockResolvedValue([]),
+            }),
+          }),
+        }),
+        update: jest.fn().mockReturnValue({
+          set: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnValue({
               returning: jest.fn().mockResolvedValue([]),
             }),
           }),
@@ -72,10 +88,11 @@ describe('DrizzleIdempotencyRepository', () => {
 
       expect(result.acquired).toBe(false);
       expect(result.resultId).toBeNull();
+      expect(result.status).toBe('PROCESSING');
     });
 
-    it('should reset FAILED key back to PROCESSING and return acquired=true', async () => {
-      const updateWhere = jest.fn().mockResolvedValue(undefined);
+    it('should reset FAILED key back to PROCESSING with conditional update and return acquired=true', async () => {
+      const updateReturning = jest.fn().mockResolvedValue([{ id: 'reclaimed-id' }]);
       const db = {
         insert: jest.fn().mockReturnValue({
           values: jest.fn().mockReturnValue({
@@ -84,15 +101,10 @@ describe('DrizzleIdempotencyRepository', () => {
             }),
           }),
         }),
-        select: jest.fn().mockReturnValue({
-          from: jest.fn().mockReturnValue({
-            where: jest.fn().mockReturnValue({
-              limit: jest.fn().mockResolvedValue([{ resultId: null, status: 'FAILED' }]),
-            }),
-          }),
-        }),
         update: jest.fn().mockReturnValue({
-          set: jest.fn().mockReturnValue({ where: updateWhere }),
+          set: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnValue({ returning: updateReturning }),
+          }),
         }),
       } as never;
       const repo = new DrizzleIdempotencyRepository(db);
@@ -100,7 +112,8 @@ describe('DrizzleIdempotencyRepository', () => {
       const result = await repo.tryAcquire(TENANT_ID, KEY, new Date());
 
       expect(result.acquired).toBe(true);
-      expect(updateWhere).toHaveBeenCalled();
+      expect(result.status).toBe('PROCESSING');
+      expect(updateReturning).toHaveBeenCalled();
     });
 
     it('should handle undefined existing when no row found', async () => {
@@ -108,6 +121,13 @@ describe('DrizzleIdempotencyRepository', () => {
         insert: jest.fn().mockReturnValue({
           values: jest.fn().mockReturnValue({
             onConflictDoNothing: jest.fn().mockReturnValue({
+              returning: jest.fn().mockResolvedValue([]),
+            }),
+          }),
+        }),
+        update: jest.fn().mockReturnValue({
+          set: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnValue({
               returning: jest.fn().mockResolvedValue([]),
             }),
           }),
@@ -126,6 +146,26 @@ describe('DrizzleIdempotencyRepository', () => {
 
       expect(result.acquired).toBe(false);
       expect(result.resultId).toBeNull();
+      expect(result.status).toBeNull();
+    });
+  });
+
+  describe('getStatus', () => {
+    it('should return the current status when the key exists', async () => {
+      const db = {
+        select: jest.fn().mockReturnValue({
+          from: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnValue({
+              limit: jest.fn().mockResolvedValue([{ resultId: RESULT_ID, status: 'COMPLETED' }]),
+            }),
+          }),
+        }),
+      } as never;
+      const repo = new DrizzleIdempotencyRepository(db);
+
+      const result = await repo.getStatus(TENANT_ID, KEY);
+
+      expect(result).toEqual({ resultId: RESULT_ID, status: 'COMPLETED' });
     });
   });
 
@@ -146,15 +186,15 @@ describe('DrizzleIdempotencyRepository', () => {
 
     it('should update using provided tx', async () => {
       const where = jest.fn().mockResolvedValue(undefined);
-      const db = { update: jest.fn() } as never;
+      const db = { update: jest.fn() };
       const tx = {
         update: jest.fn().mockReturnValue({
           set: jest.fn().mockReturnValue({ where }),
         }),
-      } as never;
-      const repo = new DrizzleIdempotencyRepository(db);
+      };
+      const repo = new DrizzleIdempotencyRepository(db as never);
 
-      await repo.complete(TENANT_ID, KEY, RESULT_ID, tx);
+      await repo.complete(TENANT_ID, KEY, RESULT_ID, tx as never);
 
       expect(tx.update).toHaveBeenCalled();
     });

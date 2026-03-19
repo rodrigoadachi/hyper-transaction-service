@@ -8,11 +8,15 @@ import { TransactionEntryType } from '../../domain/value-objects/transaction-ent
 import { TENANT_REVENUE_RATIO } from '../../domain/constants/split.constants';
 import { IdempotencyConflictError, NotFoundError } from '../../../../shared/domain/errors';
 import { UuidVO } from '../../../../shared/domain/value-objects/uuid.vo';
+import { RequestContext } from '../../../../shared/infrastructure/http/request-context';
 import type { ITransactionRepository } from '../ports/transaction-repository.port';
 import type { IIdempotencyRepository } from '../ports/idempotency-repository.port';
 import type { ITransactionEntryRepository } from '../ports/transaction-entry-repository.port';
 import type { ITransactionEventPublisher } from '../ports/transaction-event-publisher.port';
 import type { ITransactionCacheService } from '../ports/transaction-cache.port';
+
+const IDEMPOTENCY_WAIT_ATTEMPTS = 20;
+const IDEMPOTENCY_WAIT_INTERVAL_MS = 25;
 
 export interface CreateTransactionInput {
   readonly tenantId: string;
@@ -49,6 +53,11 @@ export class CreateTransactionUseCase {
 
   async execute(input: CreateTransactionInput): Promise<CreateTransactionOutput> {
     const start = Date.now();
+    const baseLog = {
+      ...RequestContext.snapshot(),
+      tenantId: input.tenantId,
+      idempotencyKey: input.idempotencyKey,
+    };
 
     if (!Object.values(TransactionSource).includes(input.source as TransactionSource)) {
       throw new NotFoundError(`Invalid transaction source: "${input.source}"`);
@@ -62,17 +71,13 @@ export class CreateTransactionUseCase {
     );
 
     if (!acquired) {
-      if (resultId) {
-        const existing = await this.transactionRepository.findById(
-          UuidVO.fromString(resultId),
-          input.tenantId,
-        );
-        if (!existing) throw new NotFoundError('Cached transaction not found');
+      const existing = await this.resolveExistingTransaction(input.tenantId, input.idempotencyKey, resultId);
 
+      if (existing) {
         this.logger.log({
           event: 'transaction.idempotent_hit',
-          transactionId: resultId,
-          tenantId: input.tenantId,
+          ...baseLog,
+          transactionId: existing.id.toString(),
           durationMs: Date.now() - start,
         });
 
@@ -92,6 +97,7 @@ export class CreateTransactionUseCase {
       externalRef: input.externalRef,
       metadata: input.metadata,
     });
+    RequestContext.set('transactionId', transaction.id.toString());
 
     try {
       await this.transactionRepository.withTransaction(async (tx) => {
@@ -102,12 +108,14 @@ export class CreateTransactionUseCase {
 
         const entries: TransactionEntryEntity[] = [
           TransactionEntryEntity.create({
+            tenantId: input.tenantId,
             transactionId: transaction.id.toString(),
             type: TransactionEntryType.TENANT_REVENUE,
             amountInCents: tenantAmount,
             description: 'Tenant revenue (90%)',
           }),
           TransactionEntryEntity.create({
+            tenantId: input.tenantId,
             transactionId: transaction.id.toString(),
             type: TransactionEntryType.PLATFORM_FEE,
             amountInCents: platformAmount,
@@ -122,8 +130,8 @@ export class CreateTransactionUseCase {
 
       this.logger.log({
         event: 'transaction.created',
+        ...baseLog,
         transactionId: transaction.id.toString(),
-        tenantId: input.tenantId,
         source: transaction.source,
         durationMs: Date.now() - start,
       });
@@ -145,8 +153,8 @@ export class CreateTransactionUseCase {
 
       this.logger.error({
         event: 'transaction.failed',
+        ...baseLog,
         transactionId: transaction.id.toString(),
-        tenantId: input.tenantId,
         durationMs: Date.now() - start,
         error: err instanceof Error ? err.message : String(err),
         stack: err instanceof Error ? err.stack : undefined,
@@ -154,5 +162,40 @@ export class CreateTransactionUseCase {
 
       throw err;
     }
+  }
+
+  private async resolveExistingTransaction(
+    tenantId: string,
+    idempotencyKey: string,
+    resultId: string | null,
+  ): Promise<TransactionEntity | null> {
+    if (resultId) {
+      return this.loadTransaction(resultId, tenantId);
+    }
+
+    for (let attempt = 0; attempt < IDEMPOTENCY_WAIT_ATTEMPTS; attempt += 1) {
+      await this.sleep(IDEMPOTENCY_WAIT_INTERVAL_MS);
+      const status = await this.idempotencyRepository.getStatus(tenantId, idempotencyKey);
+
+      if (status?.status === 'COMPLETED' && status.resultId) {
+        return this.loadTransaction(status.resultId, tenantId);
+      }
+
+      if (status?.status === 'FAILED') {
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  private async loadTransaction(resultId: string, tenantId: string): Promise<TransactionEntity> {
+    const existing = await this.transactionRepository.findById(UuidVO.fromString(resultId), tenantId);
+    if (!existing) throw new NotFoundError('Cached transaction not found');
+    return existing;
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

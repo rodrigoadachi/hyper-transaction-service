@@ -1,5 +1,5 @@
 import { api } from '../../../../lib/api';
-import type { CreateTransactionPayload, CreateTransactionResponse, TransactionsPage } from '../types';
+import type { CreateTransactionRequest, CreateTransactionResponse, TransactionsPage } from '../types';
 
 export const getTransactionsService = (page: number, limit = 20): Promise<TransactionsPage> =>
   api.get<TransactionsPage>('/transactions', {
@@ -7,9 +7,9 @@ export const getTransactionsService = (page: number, limit = 20): Promise<Transa
   });
 
 export const createTransactionService = (
-  payload: CreateTransactionPayload,
+  request: CreateTransactionRequest,
 ): Promise<CreateTransactionResponse> =>
   api.post<CreateTransactionResponse>('/transactions', {
-    body: payload,
-    headers: { 'X-Idempotency-Key': crypto.randomUUID() },
+    body: request.payload,
+    headers: { 'X-Idempotency-Key': request.idempotencyKey },
   });
