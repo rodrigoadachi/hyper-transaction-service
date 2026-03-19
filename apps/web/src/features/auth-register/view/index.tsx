@@ -1,8 +1,6 @@
-import { type FormEvent, useCallback, useState } from 'react';
+import { type FormEvent, useCallback } from 'react';
 import { Link, useRouter } from '@tanstack/react-router';
 import {
-  Alert,
-  AlertDescription,
   Button,
   Card,
   CardContent,
@@ -13,6 +11,7 @@ import {
   FormField,
   buttonVariants,
   cn,
+  toastManager,
 } from '@hyper/ui';
 import { useRegisterMutate } from '../model/queries';
 import type { RegisterPayload } from '../model/types';
@@ -27,7 +26,6 @@ const validatePassword = (password: string): string | undefined => {
 export const RegisterView = () => {
   const router = useRouter();
   const registerMutate = useRegisterMutate();
-  const [validationError, setValidationError] = useState<string | null>(null);
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -38,24 +36,35 @@ export const RegisterView = () => {
       const passwordError = validatePassword(password);
 
       if (passwordError) {
-        setValidationError(passwordError);
+        toastManager.add({
+          title: 'Erro ao criar conta',
+          description: passwordError,
+          type: 'error',
+        });
         return;
       }
 
       try {
-        setValidationError(null);
         const payload: RegisterPayload = { email, password };
         await registerMutate.mutateAsync(payload);
-        router.navigate({ to: '/login' });
-      } catch {
-        // handled by react-query error state
+        toastManager.add({
+          title: 'Conta criada com sucesso',
+          description: 'Você será redirecionado para o login.',
+          type: 'success',
+        });
+        await router.navigate({ to: '/login' });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Tente novamente em instantes.';
+
+        toastManager.add({
+          title: 'Erro ao criar conta',
+          description: message,
+          type: 'error',
+        });
       }
     },
     [registerMutate, router],
   );
-
-  const errorMessage =
-    validationError || (registerMutate.isError ? (registerMutate.error as Error).message : null);
 
   return (
     <Card>
@@ -65,11 +74,6 @@ export const RegisterView = () => {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {errorMessage && (
-            <Alert variant="destructive">
-              <AlertDescription>{errorMessage}</AlertDescription>
-            </Alert>
-          )}
           <FormField
             id="email"
             name="email"
