@@ -1,9 +1,14 @@
 # =============================================================================
 # Hyper Finance — Web Dockerfile
 # Build context: monorepo/ (run from repo root)
-#   docker build -f monorepo/apps/web/Dockerfile monorepo/ -t hyper-web
+#   docker build -f apps/web/Dockerfile . -t hyper-web
 #
-# Uses Turborepo prune --docker to isolate 'web' + its local deps (@hyper/ui,
+# IMPORTANT:
+#   This Dockerfile depends on workspace packages and Turbo metadata that exist
+#   only at the monorepo root. It will fail if the Docker build context is set
+#   to apps/web only (for example, an EasyPanel build path of /apps/web).
+#
+# Uses Turborepo prune --docker to isolate '@hyper/web' + its local deps (@hyper/ui,
 # @hyper/typescript-config, etc.) and maximise Docker layer caching.
 # Final image is caddy:alpine serving the Vite SPA static build.
 # Traefik (docker-compose / AWS ALB) provides TLS termination externally.
@@ -19,11 +24,11 @@ RUN apk add --no-cache libc6-compat \
 WORKDIR /app
 
 # ─── Stage 2: pruner ─────────────────────────────────────────────────────────
-# Trim the monorepo to the 'web' scope — includes @hyper/ui, @hyper/ui deps, etc.
+# Trim the monorepo to the '@hyper/web' scope — includes @hyper/ui, @hyper/ui deps, etc.
 FROM base AS pruner
 
 COPY . .
-RUN turbo prune web --docker
+RUN turbo prune @hyper/web --docker
 
 # ─── Stage 3: installer ──────────────────────────────────────────────────────
 # Install dependencies from the pruned package.json tree only.
@@ -37,14 +42,14 @@ RUN pnpm install --frozen-lockfile
 
 # ─── Stage 4: builder ────────────────────────────────────────────────────────
 # Build the React SPA with Vite.
-# turbo run build --filter=web also builds @hyper/ui first (dependsOn: ["^build"])
+# turbo run build --filter=@hyper/web also builds @hyper/ui first (dependsOn: ["^build"])
 FROM base AS builder
 
 COPY --from=installer /app .
 COPY --from=pruner /app/out/full .
 
 # Build web (and @hyper/ui as a dependency, respecting turbo pipeline)
-RUN turbo run build --filter=web
+RUN turbo run build --filter=@hyper/web
 
 # ─── Stage 5: runner ─────────────────────────────────────────────────────────
 # Serve the static Vite build via caddy:alpine — no Node.js needed at runtime.
