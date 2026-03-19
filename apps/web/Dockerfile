@@ -57,6 +57,8 @@ RUN turbo run build --filter=@hyper/web
 # TLS termination is done externally by Traefik (local) or ALB (AWS).
 FROM caddy:alpine AS runner
 
+ENV WEB_PORT=80
+
 # Copy Caddyfile (SPA routing, cache headers, security headers)
 COPY apps/web/Caddyfile /etc/caddy/Caddyfile
 

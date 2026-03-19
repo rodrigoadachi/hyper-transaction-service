@@ -3,7 +3,7 @@
 #
 # Serve the Vite static build via Caddy inside the Docker container.
 # Traefik (docker-compose) or ALB (AWS) handle TLS/routing externally.
-# Caddy listens on :80 inside the container only.
+# Caddy listens on WEB_PORT inside the container, defaulting to :80.
 #
 # Features:
 #   - SPA fallback: all unknown paths serve index.html
@@ -13,13 +13,19 @@
 #   - Security headers
 # =============================================================================
 
-:80 {
-	# Root of the static build
-	root * /srv
+:{$WEB_PORT:80} {
+	route {
+		# Dedicated health endpoint for container orchestrators
+		@health path /health
+		respond @health "ok" 200
 
-	# Serve static files; fall back to index.html for SPA routing
-	try_files {path} /index.html
-	file_server
+		# Root of the static build
+		root * /srv
+
+		# Serve static files; fall back to index.html for SPA routing
+		try_files {path} /index.html
+		file_server
+	}
 
 	# ─── Compression ─────────────────────────────────────────────────────
 	encode gzip
@@ -47,6 +53,4 @@
 		-Server
 	}
 
-	# ─── Health check (for ALB target group / Traefik health probe) ───────
-	respond /health 200
 }
