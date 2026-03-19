@@ -79,9 +79,10 @@ USER hyper
 
 EXPOSE 3333
 
-# Health check — ALB also performs external health checks on /health
+# Health check — use liveness for container restarts; readiness remains
+# available at /health/ready for external routers/load balancers.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget -qO- http://localhost:3333/health || exit 1
+  CMD wget -qO- http://localhost:3333/health/live || exit 1
 
 WORKDIR /app/apps/api
 
