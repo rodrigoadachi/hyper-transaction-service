@@ -23,9 +23,12 @@ export default defineConfig({
 		port: Number(process.env.WEB_PORT) || 3000,
 		proxy: {
 			"/api": {
-				target: `${process.env.API_URL || 'http://localhost:3333'}`,
+				target: process.env.API_URL,
 				changeOrigin: true,
-				rewrite: (path) => path.replace(/^\/api/, ""),
+				rewrite: (path) => {
+					console.log("Proxying request:", path);
+					return path.replace(/^\/api/, "");
+				},
 			},
 		},
 	},

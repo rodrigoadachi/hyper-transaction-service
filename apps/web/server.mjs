@@ -41,11 +41,12 @@ function sendFile(response, filePath, cacheControl) {
 }
 
 async function proxyApiRequest(request, response) {
-  console.log('request::', request)
   const incomingUrl = request.url || '/';
   const rewrittenPath = incomingUrl.replace(/^\/api(?=\/|$)/, '') || '/';
   const targetUrl = new URL(rewrittenPath, apiUrl);
   const headers = new Headers();
+
+  console.log(`[web-proxy] ${request.method || 'GET'} ${incomingUrl} -> ${targetUrl.toString()}`);
 
   for (const [key, value] of Object.entries(request.headers)) {
     if (value === undefined) continue;
@@ -104,7 +105,14 @@ const server = createServer(async (request, response) => {
   if (requestPath.startsWith('/api')) {
     try {
       await proxyApiRequest(request, response);
-    } catch {
+    } catch (error) {
+      console.error('[web-proxy] upstream request failed', {
+        method: request.method || 'GET',
+        apiUrl,
+        requestPath,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       response.statusCode = 502;
       response.setHeader('Content-Type', 'application/json; charset=utf-8');
       response.setHeader('Cache-Control', 'no-store');
