@@ -4,6 +4,8 @@ import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+const registrationSecret = process.env.REGISTRATION_SECRET;
+
 export default defineConfig({
 	envDir: resolve(__dirname, "../../"),
 	plugins: [
@@ -25,6 +27,19 @@ export default defineConfig({
 			"/api": {
 				target: process.env.API_URL,
 				changeOrigin: true,
+				configure: (proxy) => {
+					proxy.on("proxyReq", (proxyReq, req) => {
+						if (req.method !== "POST" || !req.url?.startsWith("/api/auth/register")) {
+							return;
+						}
+
+						if (!registrationSecret) {
+							throw new Error("REGISTRATION_SECRET is required to proxy POST /api/auth/register in development");
+						}
+
+						proxyReq.setHeader("x-registration-token", registrationSecret);
+					});
+				},
 				rewrite: (path) => {
 					console.log("Proxying request:", path);
 					return path.replace(/^\/api/, "");

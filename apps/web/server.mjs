@@ -6,6 +6,7 @@ import { extname, join, normalize, resolve } from 'node:path';
 const host = '0.0.0.0';
 const port = Number(process.env.PORT || process.env.WEB_PORT || 3000);
 const apiUrl = process.env.API_URL || 'http://localhost:3333';
+const registrationSecret = process.env.REGISTRATION_SECRET;
 const distDir = resolve(process.cwd(), 'dist');
 const indexPath = join(distDir, 'index.html');
 
@@ -78,6 +79,7 @@ async function proxyApiRequest(request, response) {
   const rewrittenPath = incomingUrl.replace(/^\/api(?=\/|$)/, '') || '/';
   const targetUrl = new URL(rewrittenPath, apiUrl);
   const headers = new Headers();
+  const isRegisterRequest = request.method === 'POST' && rewrittenPath === '/auth/register';
 
   console.log(`[web-proxy] ${request.method || 'GET'} ${incomingUrl} -> ${targetUrl.toString()}`);
 
@@ -93,6 +95,14 @@ async function proxyApiRequest(request, response) {
 
   headers.set('x-forwarded-host', request.headers.host || '');
   headers.set('x-forwarded-proto', 'https');
+
+  if (isRegisterRequest) {
+    if (!registrationSecret) {
+      throw new Error('REGISTRATION_SECRET is required in web runtime to proxy POST /auth/register');
+    }
+
+    headers.set('x-registration-token', registrationSecret);
+  }
 
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
   const requestBody = hasBody ? await readRequestBody(request) : undefined;
