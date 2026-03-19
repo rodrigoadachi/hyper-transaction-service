@@ -1,0 +1,320 @@
+name: Deploy
+
+# Triggered only when the full CI workflow completes on main.
+# All CI jobs (audit, lint, build, test) must pass — if any fails,
+# this workflow is never triggered with conclusion == 'success'.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: [completed]
+
+# One active deployment at a time — never interleave deployments
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+# ─── Required GitHub Actions configuration ────────────────────────────────────
+#
+# Settings → Secrets and variables → Actions → Secrets (encrypted):
+#   AWS_DEPLOY_ROLE_ARN          IAM role assumed via OIDC
+#   STAGING_SMOKE_TEST_TOKEN     Valid JWT for smoke test requests
+#
+# Settings → Secrets and variables → Actions → Variables (plain text):
+#   AWS_REGION                   e.g. us-east-1
+#   AWS_ACCOUNT_ID               e.g. 123456789012
+#   PROJECT                      e.g. hyper-finance
+#   BASE_DOMAIN                  e.g. hyper.com
+#   PRIVATE_SUBNET_IDS           comma-separated, e.g. subnet-aaa,subnet-bbb
+#   API_SECURITY_GROUP_ID        e.g. sg-0123456789abcdef0
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+  ECR_REGISTRY: ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com
+  PROJECT: ${{ vars.PROJECT }}
+  # SHA of the commit that was validated by CI — used to tag and reference images
+  GIT_SHA: ${{ github.event.workflow_run.head_sha }}
+
+jobs:
+  # Guard: abort immediately if CI did not succeed
+  ci-gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: CI passed — proceeding with deployment
+        run: echo "CI workflow succeeded for ${{ env.GIT_SHA }}"
+
+  # ─── Build & Push Docker Images to ECR ────────────────────────────────────
+  build-push:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    needs: [ci-gate]
+
+    permissions:
+      id-token: write   # Required for OIDC federation with AWS
+      contents: read
+      security-events: write  # Required to upload Trivy SARIF
+
+    outputs:
+      new_task_def_arn: ${{ steps.register-task.outputs.task_def_arn }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.GIT_SHA }}
+
+      # Configure AWS credentials via OIDC (no long-lived secrets in GitHub)
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── API Image ──────────────────────────────────────────────────────────
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.PROJECT }}-api:${{ env.GIT_SHA }}
+            ${{ env.ECR_REGISTRY }}/${{ env.PROJECT }}-api:latest
+          cache-from: type=registry,ref=${{ env.ECR_REGISTRY }}/${{ env.PROJECT }}-api:cache
+          cache-to: type=registry,ref=${{ env.ECR_REGISTRY }}/${{ env.PROJECT }}-api:cache,mode=max
+
+      # ── Web Image ──────────────────────────────────────────────────────────
+      - name: Build and push Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.PROJECT }}-web:${{ env.GIT_SHA }}
+            ${{ env.ECR_REGISTRY }}/${{ env.PROJECT }}-web:latest
+          cache-from: type=registry,ref=${{ env.ECR_REGISTRY }}/${{ env.PROJECT }}-web:cache
+          cache-to: type=registry,ref=${{ env.ECR_REGISTRY }}/${{ env.PROJECT }}-web:cache,mode=max
+
+      # Trivy scan na imagem API recém publicada
+      - name: Trivy scan — API image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/${{ env.PROJECT }}-api:${{ env.GIT_SHA }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+      - name: Upload Trivy SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+      # Registra nova ECS task definition apontando para a imagem recém publicada
+      - name: Register new ECS task definition
+        id: register-task
+        run: |
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition ${{ env.PROJECT }}-production-api \
+            --query "taskDefinition" \
+            --output json)
+
+          NEW_TASK_DEF=$(echo "$TASK_DEF" \
+            | jq --arg IMAGE "${{ env.ECR_REGISTRY }}/${{ env.PROJECT }}-api:${{ env.GIT_SHA }}" \
+                '.containerDefinitions[0].image = $IMAGE
+                | del(.taskDefinitionArn, .revision, .status,
+                      .requiresAttributes, .compatibilities,
+                      .registeredAt, .registeredBy)')
+
+          NEW_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$NEW_TASK_DEF" \
+            --query "taskDefinition.taskDefinitionArn" \
+            --output text)
+
+          echo "task_def_arn=$NEW_ARN" >> "$GITHUB_OUTPUT"
+
+  # ─── Run Database Migrations ──────────────────────────────────────────────
+  migrate:
+    name: Database Migrations
+    runs-on: ubuntu-latest
+    needs: [build-push]
+    environment: staging
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Run migrations as ECS one-off task
+        run: |
+          TASK_ARN=$(aws ecs run-task \
+            --cluster ${{ env.PROJECT }}-staging-cluster \
+            --task-definition ${{ env.PROJECT }}-migrate \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={
+              subnets=[${{ vars.PRIVATE_SUBNET_IDS }}],
+              securityGroups=[${{ vars.API_SECURITY_GROUP_ID }}],
+              assignPublicIp=DISABLED
+            }" \
+            --overrides '{"containerOverrides":[{"name":"api","command":["node","dist/scripts/db-migrate"]}]}' \
+            --query "tasks[0].taskArn" \
+            --output text)
+
+          aws ecs wait tasks-stopped \
+            --cluster ${{ env.PROJECT }}-staging-cluster \
+            --tasks "$TASK_ARN"
+
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster ${{ env.PROJECT }}-staging-cluster \
+            --tasks "$TASK_ARN" \
+            --query "tasks[0].containers[0].exitCode" \
+            --output text)
+
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "Migration task exited with code $EXIT_CODE — aborting deployment"
+            exit 1
+          fi
+
+  # ─── Deploy to Staging ────────────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy → Staging
+    runs-on: ubuntu-latest
+    needs: [migrate]
+    environment: staging
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update ECS service (staging — rolling update)
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.PROJECT }}-staging-cluster \
+            --service ${{ env.PROJECT }}-staging-api \
+            --task-definition ${{ needs.build-push.outputs.new_task_def_arn }} \
+            --force-new-deployment
+
+          aws ecs wait services-stable \
+            --cluster ${{ env.PROJECT }}-staging-cluster \
+            --services ${{ env.PROJECT }}-staging-api
+
+  # ─── Smoke Test ───────────────────────────────────────────────────────────
+  smoke-test:
+    name: Smoke Test (staging)
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+
+    steps:
+      - name: Health check — API
+        run: |
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              https://api.staging.${{ vars.BASE_DOMAIN }}/health)
+            if [ "$STATUS" = "200" ]; then
+              echo "Health check passed (attempt $i)"
+              exit 0
+            fi
+            echo "Attempt $i: got $STATUS, retrying in 10s..."
+            sleep 10
+          done
+          echo "Health check failed after 5 attempts"
+          exit 1
+
+      - name: Functional check — idempotency
+        run: |
+          IDEM_KEY="smoke-test-$(date +%s)"
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            https://api.staging.${{ vars.BASE_DOMAIN }}/transactions \
+            -H "Content-Type: application/json" \
+            -H "X-Idempotency-Key: $IDEM_KEY" \
+            -H "Authorization: Bearer ${{ secrets.STAGING_SMOKE_TEST_TOKEN }}" \
+            -d '{"amount": 100, "description": "smoke-test"}')
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          [ "$HTTP_CODE" = "201" ] || { echo "Expected 201, got $HTTP_CODE"; exit 1; }
+
+  # ─── Deploy to Production (Blue/Green via CodeDeploy) ─────────────────────
+  deploy-production:
+    name: Deploy → Production
+    runs-on: ubuntu-latest
+    needs: [smoke-test]
+    # Requer aprovação manual — configure em Settings → Environments → production
+    environment: production
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create CodeDeploy deployment (Blue/Green)
+        id: codedeploy
+        run: |
+          NEW_TASK_DEF_ARN=${{ needs.build-push.outputs.new_task_def_arn }}
+
+          APPSPEC=$(jq -nc \
+            --arg TASK_DEF "$NEW_TASK_DEF_ARN" \
+            '{
+              version: 1,
+              Resources: [{
+                TargetService: {
+                  Type: "AWS::ECS::Service",
+                  Properties: {
+                    TaskDefinition: $TASK_DEF,
+                    LoadBalancerInfo: {
+                      ContainerName: "api",
+                      ContainerPort: 3333
+                    }
+                  }
+                }
+              }]
+            }')
+
+          APPSPEC_SHA256=$(echo "$APPSPEC" | sha256sum | cut -d' ' -f1)
+
+          DEPLOYMENT_ID=$(aws deploy create-deployment \
+            --application-name ${{ env.PROJECT }}-production-api \
+            --deployment-group-name production \
+            --revision "revisionType=AppSpecContent,appSpecContent={content='$APPSPEC',sha256=$APPSPEC_SHA256}" \
+            --description "Deploy ${{ env.GIT_SHA }} via GitHub Actions" \
+            --query "deploymentId" \
+            --output text)
+
+          echo "deployment_id=$DEPLOYMENT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for deployment to complete
+        run: |
+          aws deploy wait deployment-successful \
+            --deployment-id "${{ steps.codedeploy.outputs.deployment_id }}"
+
+      - name: Notify on failure (rollback)
+        if: failure()
+        run: |
+          echo "Deployment failed — CodeDeploy will automatically roll back to the blue environment"

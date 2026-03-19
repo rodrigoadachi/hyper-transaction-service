@@ -1,11 +1,17 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.7/schema.json",
   "extends": ["./biome.json"],
+  "javascript": {
+    "parser": {
+      "unsafeParameterDecoratorsEnabled": true
+    }
+  },
   "linter": {
     "rules": {
       "style": {
         "noNonNullAssertion": "warn",
-        "useNamingConvention": "off"
+        "useNamingConvention": "off",
+        "useImportType": "off"
       },
       "suspicious": {
         "noExplicitAny": "warn"

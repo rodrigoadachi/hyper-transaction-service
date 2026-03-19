@@ -6,7 +6,7 @@ import type { Env } from '../../../../config/env';
 import type { TokenPayload } from '../../application/ports/token-service.port';
 
 // ES256 (ECDSA P-256) — cast needed because @types/jsonwebtoken@9.0.10
-const ES256: any = 'ES256';
+const ES256 = 'ES256' as const;
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {

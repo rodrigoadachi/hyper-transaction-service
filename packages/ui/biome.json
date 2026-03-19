@@ -1,7 +1,12 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.7/schema.json",
-  "extends": [
-    "../../packages/biome-config/biome.json",
-    "../../packages/biome-config/react.json"
-  ]
+  "extends": ["../../packages/biome-config/biome.json", "../../packages/biome-config/react.json"],
+  "vcs": {
+    "useIgnoreFile": false
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  }
 }

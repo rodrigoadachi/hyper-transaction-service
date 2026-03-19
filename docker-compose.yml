@@ -1,4 +1,88 @@
 services:
+  # ════════════════════════════════════════════════════════════════════════════
+  # PROFILE: full-stack
+  #   Runs the complete application stack (Traefik + API + Web) inside Docker.
+  #   Use for production-like local testing.
+  #
+  #   docker compose --profile full-stack up --build
+  #
+  #   Routes:
+  #     http://api.localhost  → NestJS API  (container port 3333)
+  #     http://app.localhost  → Vite SPA    (served by Caddy, container port 80)
+  #     http://localhost:8080 → Traefik dashboard
+  #
+  # PROFILE: (default / no profile)
+  #   Runs infrastructure only (postgres + redis).
+  #   Use alongside `pnpm dev` for development with hot-reload.
+  #
+  #   docker compose up -d
+  #   pnpm --filter api run dev
+  #   pnpm --filter web run dev
+  # ════════════════════════════════════════════════════════════════════════════
+
+  # ── Traefik (edge router) ──────────────────────────────────────────────────
+  traefik:
+    image: traefik:v3
+    profiles: ["full-stack"]
+    command:
+      # Docker provider: auto-discover services via container labels
+      - "--providers.docker=true"
+      # Do NOT expose services unless they have traefik.enable=true label
+      - "--providers.docker.exposedbydefault=false"
+      # Entry point: HTTP :80 (TLS handled per-environment — not needed locally)
+      - "--entrypoints.web.address=:80"
+      # Dashboard (accessible at http://localhost:8080 — disable in production)
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      # Structured access logs
+      - "--accesslog=true"
+    ports:
+      - "80:80"       # Application traffic
+      - "8080:8080"   # Traefik dashboard
+    volumes:
+      # Read-only Docker socket — Traefik needs it to watch container labels
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  # ── NestJS API ────────────────────────────────────────────────────────────
+  api:
+    profiles: ["full-stack"]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file:
+      # Loads all variables from the monorepo root .env
+      - ../.env
+    environment:
+      NODE_ENV: production
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`api.localhost`)"
+      - "traefik.http.routers.api.entrypoints=web"
+      - "traefik.http.services.api.loadbalancer.server.port=3333"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── React SPA (served by Caddy) ───────────────────────────────────────────
+  web:
+    profiles: ["full-stack"]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`app.localhost`)"
+      - "traefik.http.routers.web.entrypoints=web"
+      - "traefik.http.services.web.loadbalancer.server.port=80"
+    restart: unless-stopped
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Infrastructure (no profile — always available)
+  # ════════════════════════════════════════════════════════════════════════════
+
   postgres:
     image: postgres:17
     environment:
@@ -37,6 +121,9 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    # NOTE: este container não é necessário. O Bull Board está integrado
+    # diretamente na API em http://localhost:3333/queues (BullMQ nativo).
+    profiles: ["legacy"]
 
 volumes:
   postgres_data:

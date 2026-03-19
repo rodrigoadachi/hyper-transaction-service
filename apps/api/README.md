@@ -1,53 +1,108 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Hyper Finance — API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Serviço de processamento de transações financeiras multi-tenant (SaaS B2B).  
+Stack: **NestJS 10 · TypeScript 5 strict · Drizzle ORM · PostgreSQL 17**.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
+## Rodando localmente
 
 ```bash
-$ pnpm install
+# Na raiz do monorepo (./monorepo/)
+cp apps/api/.env.example apps/api/.env.local   # ajuste as variáveis
+
+docker compose up -d                            # sobe PostgreSQL
+
+pnpm --filter api run db:migrate                # aplica migrations
+
+pnpm --filter api run start:dev                 # API em http://localhost:3333
+# Swagger UI: http://localhost:3333/docs
 ```
 
-## Compile and run the project
+---
 
-```bash
-# development
-$ pnpm run start
+## Endpoints de Transações
 
-# watch mode
-$ pnpm run start:dev
+Todas as rotas exigem `Authorization: Bearer <jwt>` (obtenha via `POST /auth/login`).
 
-# production mode
-$ pnpm run start:prod
-```
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `POST` | `/transactions` | Criar transação (header `X-Idempotency-Key` obrigatório) |
+| `GET` | `/transactions` | Listar transações (paginação + filtros) |
+| `GET` | `/transactions/:id` | Buscar transação por ID |
 
-## Run tests
+Documentação completa em [docs/CHALLENGE.md](../../docs/CHALLENGE.md).
 
-```bash
-# unit tests
+---
+
+## Decisões Arquiteturais
+
+### Por que Clean Architecture?
+
+O domínio financeiro tem regras que mudam devagar, mas a infraestrutura muda rápido (banco, fila, cache). Separar as camadas `domain → application → infrastructure` garante que regras de negócio (Money VO, idempotência) não dependam de NestJS nem do Drizzle — podem ser testadas de forma pura, sem I/O.
+
+O principal benefício prático: é possível trocar o repositório Drizzle por um em Redis ou outro banco sem tocar no use case. Num SaaS que vai crescer, essa troca acontece mais cedo do que se imagina.
+
+### Onde colocaria cache? Quando não colocaria?
+
+**Colocaria:**
+- **Verificação de idempotência**: hoje é uma query ao PostgreSQL (~5 ms). Com Redis SETNX, cai para ~0.3 ms e escala horizontalmente sem contenção de lock.
+- **JWT claims**: o payload do JWT é verificado a cada request. Um cache Redis por `jti`/`sub` com TTL = `expiresIn` evitaria o trabalho de parsing da assinatura ECDSA em cada hit.
+- **Lista de transações** (agregados): com TTL curto (~5 s) para dashboards que polling a lista, usando tag de invalidação por `tenantId` ao criar nova transação.
+
+**Não colocaria:**
+- Na criação de transações em si: consistência > velocidade. Qualquer cache intermediário entre a escrita e a leitura pode retornar dados desatualizados em falha parcial.
+- Em queries que precisam de forte consistência (ex: saldo atual derivado de transações). Cache stale em operações financeiras é inaceitável.
+
+### Como garantiria observabilidade em produção?
+
+1. **Logs estruturados (Pino)**: já implementados nos use cases com `event`, `transactionId`, `tenantId`, `durationMs` — sem dados sensíveis. Integração direta com Datadog, Loki ou CloudWatch Logs.
+2. **Tracing distribuído**: `@opentelemetry/sdk-node` com auto-instrumentação para NestJS e `node-postgres`. Cada request recebe um `traceId` propagado via W3C Trace Context. O `traceId` é incluído nas respostas de erro 500.
+3. **Métricas (Prometheus)**: contador de transações por `type`/`status`/`tenant`, histograma de duração de use cases, gauge de pool de conexões ativo. Alertas para p99 > 200 ms e taxa de erro > 1%.
+4. **Health checks**: `GET /health` já existe. Adicionar verificação de conectividade ao PostgreSQL e Redis como `readiness probe` no Kubernetes.
+
+### Em que cenário usaria fila/mensageria?
+
+O status `PENDING` sinaliza a dívida técnica atual: a transação é criada mas não "processada". Em produção, o worker de processamento (BullMQ) seria acionado nos seguintes cenários:
+
+- **Notificações de terceiros**: chamar APIs externas (Pix, cartão, boleto) de forma assíncrona. Evita travar o request de quem criou a transação esperando timeout de provider.
+- **Retry com backoff exponencial**: falhas em integrações externas não deveriam falhar silenciosamente. O BullMQ gerencia retentativas com delay crescente.
+- **Processamento em batch**: conciliar transações com extrato bancário pode ser feito em job offline sem afetar latência da API.
+- **Event sourcing**: publicar eventos (`transaction.created`, `transaction.completed`) num broker (SQS, Kafka) para outros serviços (notificação, analytics, auditoria) consumirem de forma desacoplada.
+
+**Quando não usaria fila**: na validação e criação da transação em si. O cliente precisa de confirmação síncrona imediata de que a transação foi aceita (ou rejeitada). Fazer isso via fila introduz complexidade desnecessária e impossibilita resposta adequada em caso de erro de validação.
+
+### O que deixaria como dívida técnica consciente?
+
+| Dívida | Motivo da decisão | Caminho de evolução |
+|--------|-------------------|---------------------|
+| `tenantId = userId` | Simplificação para MVP; o isolamento multi-tenant funciona corretamente, só não modela a hierarquia empresa→usuário | Entidade `Tenant` separada com FK em `User` |
+| Transação criada como `PENDING` e não evolui | Sem worker implementado ainda | BullMQ worker que processa → `COMPLETED`/`FAILED` |
+| Sem rate limiting por tenant | Feature não pedida no desafio | Middleware Redis INCR/EXPIRE com limite configurável por plano |
+| Offset pagination | Simples de implementar | Cursor pagination via UUIDv7 para tabelas com milhões de registros |
+| Sem cleanup de idempotency_keys expiradas | Não impacta corretude; só cresce a tabela | Job cron ou BullMQ scheduled para `DELETE WHERE expires_at < NOW()` |
+| `metadata` sem JSONSchema | JSONB aceita qualquer estrutura | Validação por `type` de transação: cada tipo define seu schema de metadata |
+
+---
+
+## Onde está o gargalo nesta implementação
+
+O gargalo principal está na **tabela `idempotency_keys`** sob alta concorrência:
+
+1. **Dois writes por transação**: INSERT em `idempotency_keys` + INSERT em `transactions` + UPDATE em `idempotency_keys` = 3 operações por request de escrita.
+2. **Pool de conexões limitado** (`max: 20`): sob spike de tráfego, requisições ficam aguardando conexão disponível. Com latência de banco de ~5 ms, 20 conexões suportam ~4.000 req/s teóricos — na prática bem menos com queries mais complexas.
+3. **Lock row-level no conflito de idempotência**: quando dois requests com a mesma chave chegam simultaneamente, o segundo aguarda a conclusão do primeiro no PostgreSQL.
+
+## Qual seria o primeiro problema real em produção
+
+**Esgotamento do pool de conexões** num spike de tráfego. Com `max: 20` e conexões bloqueadas aguardando I/O, o pool se esgota. O resultado é latência escalando de forma não-linear: 50 ms → 500 ms → timeout → erro 500 em cascata.
+
+## Qual solução priorizaria primeiro e por quê
+
+**PgBouncer em modo transaction pooling** como primeira medida. Sem mudança de código, multiplica o throughput efetivo do banco mantendo poucas conexões reais. Em paralelo, migrar a verificação de idempotência para **Redis SETNX** reduz a latência do caminho crítico de ~10 ms para ~0.3 ms e remove contenção no banco para o caso mais frequente (chave nova).
+
+Só depois disso introduziria BullMQ para processar transações de forma assíncrona, desacoplando a latência de integrações externas do tempo de resposta da API.
+
 $ pnpm run test
 
 # e2e tests

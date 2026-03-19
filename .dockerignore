@@ -1,0 +1,47 @@
+# ─── Version control ─────────────────────────────────────────────────────────
+**/.git
+**/.gitignore
+**/.gitattributes
+
+# ─── Dependencies (rebuilt inside Docker) ────────────────────────────────────
+**/node_modules
+**/.pnpm-store
+
+# ─── Build outputs (produced inside Docker) ──────────────────────────────────
+**/dist
+**/.next
+**/.turbo
+
+# ─── Test artifacts ───────────────────────────────────────────────────────────
+**/coverage
+**/*.test.ts
+**/*.spec.ts
+**/jest.config.*
+**/jest-e2e.json
+
+# ─── Environment files (injected at runtime via Secrets Manager) ──────────────
+**/.env
+**/.env.local
+**/.env.*.local
+# allow .env.example to document required vars
+!**/.env.example
+
+# ─── Docker configs (avoid recursive copy) ───────────────────────────────────
+**/Dockerfile*
+**/.dockerignore
+
+# ─── Editor / OS ──────────────────────────────────────────────────────────────
+**/.DS_Store
+**/.vscode
+**/.idea
+**/Thumbs.db
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+**/*.log
+**/logs
+
+# ─── Documentation (not needed at runtime) ───────────────────────────────────
+docs/
+old/
+**/*.md
+!monorepo/apps/api/README.md

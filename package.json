@@ -1,6 +1,10 @@
 {
   "name": "monorepo",
   "private": true,
+  "author": {
+    "name": "Rodrigo Adachi",
+    "email": "adachi.rodrigo@gmail.com"
+  },
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
@@ -9,7 +13,8 @@
     "check": "turbo run check",
     "check-types": "turbo run check-types",
     "test": "turbo run test",
-    "test:cov": "turbo run test:cov"
+    "test:cov": "turbo run test:cov",
+    "qa": "pnpm lint && pnpm check-types && pnpm audit && pnpm build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.7",

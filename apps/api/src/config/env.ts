@@ -9,12 +9,19 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('15m'),
   PEPPER: z.string().min(32, 'PEPPER must be at least 32 characters'),
   BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(14).default(12),
+
+  REGISTRATION_SECRET: z.string().min(32, 'REGISTRATION_SECRET must be at least 32 characters'),
   
   POSTGRES_HOST: z.string().min(1, 'POSTGRES_HOST must be provided'),
   POSTGRES_USER: z.string().min(1, 'POSTGRES_USER must be provided'),
   POSTGRES_PASSWORD: z.string().min(1, 'POSTGRES_PASSWORD must be provided'),
   POSTGRES_DB: z.string().min(1, 'POSTGRES_DB must be provided'),
   POSTGRES_PORT: z.coerce.number().int().positive().default(5432),
+
+  REDIS_HOST: z.string().default('localhost'),
+  REDIS_PORT: z.coerce.number().int().positive().default(6379),
+  REDIS_USERNAME: z.string().default('default'),
+  REDIS_PASSWORD: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

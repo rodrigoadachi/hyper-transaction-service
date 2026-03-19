@@ -11,8 +11,9 @@ import { JwtTokenService } from './infrastructure/jwt/jwt-token.service';
 import { JwtStrategy } from './infrastructure/jwt/jwt.strategy';
 import { DrizzleUserRepository } from './infrastructure/repositories/drizzle-user.repository';
 import { AuthController } from './infrastructure/http/auth.controller';
+import { RegistrationGuard } from './infrastructure/guards/registration.guard';
 
-const ES256: any = 'ES256';
+const ES256 = 'ES256' as const;
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ const ES256: any = 'ES256';
     RegisterUseCase,
     LoginUseCase,
     JwtStrategy,
+    RegistrationGuard,
     { provide: AUTH_TOKENS.USER_REPOSITORY, useClass: DrizzleUserRepository },
     { provide: AUTH_TOKENS.PASSWORD_HASHER, useClass: BcryptPepperHasher },
     { provide: AUTH_TOKENS.TOKEN_SERVICE, useClass: JwtTokenService },

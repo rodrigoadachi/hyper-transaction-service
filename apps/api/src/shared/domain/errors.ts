@@ -26,3 +26,16 @@ export class NotFoundError extends DomainError {
     super(message, 'NOT_FOUND');
   }
 }
+
+export class ValidationError extends DomainError {
+  constructor(message: string) {
+    super(message, 'VALIDATION_ERROR');
+  }
+}
+
+/** Thrown when an idempotency key is already being processed by a concurrent request. */
+export class IdempotencyConflictError extends DomainError {
+  constructor() {
+    super('Transaction is being processed', 'IDEMPOTENCY_CONFLICT');
+  }
+}

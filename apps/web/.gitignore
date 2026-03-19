@@ -1,0 +1,20 @@
+# Dependências
+node_modules/
+
+# Build
+dist/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# Editor
+.vscode/
+.idea/
+
+# TypeScript
+*.tsbuildinfo

@@ -2,7 +2,7 @@ import {
   pgTable,
   uuid,
   varchar,
-  integer,
+  bigint,
   jsonb,
   timestamp,
   uniqueIndex,
@@ -10,9 +10,9 @@ import {
   pgEnum,
 } from 'drizzle-orm/pg-core';
 
-export const transactionTypeEnum = pgEnum('transaction_type', [
-  'CREDIT',
-  'DEBIT',
+export const transactionSourceEnum = pgEnum('transaction_source', [
+  'WEBHOOK',
+  'MANUAL',
 ]);
 
 export const transactionStatusEnum = pgEnum('transaction_status', [
@@ -22,15 +22,21 @@ export const transactionStatusEnum = pgEnum('transaction_status', [
   'FAILED',
 ]);
 
+export const transactionEntryTypeEnum = pgEnum('transaction_entry_type', [
+  'PLATFORM_FEE',
+  'TENANT_REVENUE',
+]);
+
 export const transactionsTable = pgTable(
   'transactions',
   {
     id: uuid('id').primaryKey(),
     tenantId: uuid('tenant_id').notNull(),
     idempotencyKey: varchar('idempotency_key', { length: 255 }).notNull(),
-    amount: integer('amount').notNull(),
+    amount: bigint('amount', { mode: 'number' }).notNull(),
     currency: varchar('currency', { length: 3 }).notNull(),
-    type: transactionTypeEnum('type').notNull(),
+    source: transactionSourceEnum('source').notNull().default('MANUAL'),
+    description: varchar('description', { length: 255 }),
     status: transactionStatusEnum('status').notNull().default('PENDING'),
     externalRef: varchar('external_ref', { length: 255 }),
     metadata: jsonb('metadata'),
@@ -49,5 +55,26 @@ export const transactionsTable = pgTable(
   ],
 );
 
+export const transactionEntriesTable = pgTable(
+  'transaction_entries',
+  {
+    id: uuid('id').primaryKey(),
+    transactionId: uuid('transaction_id')
+      .notNull()
+      .references(() => transactionsTable.id),
+    type: transactionEntryTypeEnum('type').notNull(),
+    amount: bigint('amount', { mode: 'number' }).notNull(),
+    description: varchar('description', { length: 255 }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('idx_transaction_entries_transaction').on(t.transactionId),
+  ],
+);
+
 export type TransactionRow = typeof transactionsTable.$inferSelect;
 export type NewTransactionRow = typeof transactionsTable.$inferInsert;
+export type TransactionEntryRow = typeof transactionEntriesTable.$inferSelect;
+export type NewTransactionEntryRow = typeof transactionEntriesTable.$inferInsert;

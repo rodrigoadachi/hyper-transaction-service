@@ -1,6 +1,6 @@
 import { UuidVO } from '../../../../shared/domain/value-objects/uuid.vo';
-import { EmailVO } from '../value-objects/email.vo';
-import { HashedPasswordVO } from '../value-objects/hashed-password.vo';
+import type { EmailVO } from '../value-objects/email.vo';
+import type { HashedPasswordVO } from '../value-objects/hashed-password.vo';
 
 export class UserEntity {
   private constructor(

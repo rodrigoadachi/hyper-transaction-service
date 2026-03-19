@@ -353,7 +353,7 @@ const DARK_CSS = `
   ::-webkit-scrollbar-thumb:hover { background: #484f58; }
 `;
 
-export function setupSwagger(app: INestApplication, port: number | string): void {
+export function setupSwagger(app: INestApplication, _port: number | string): void {
   if (process.env.NODE_ENV === 'production') return;
 
   const config = new DocumentBuilder()

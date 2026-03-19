@@ -1,4 +1,4 @@
-import { ConflictException, Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { AUTH_TOKENS } from '../../auth.tokens';
 import { EmailVO } from '../../domain/value-objects/email.vo';
 import { HashedPasswordVO } from '../../domain/value-objects/hashed-password.vo';
@@ -29,9 +29,7 @@ export class RegisterUseCase {
   async execute(input: RegisterInput): Promise<RegisterOutput> {
     const email = EmailVO.create(input.email);
 
-    if (await this.userRepository.existsByEmail(email)) {
-      throw new ConflictError('Email already registered');
-    }
+    if (await this.userRepository.existsByEmail(email)) throw new ConflictError('Email already registered');
 
     const hash = await this.passwordHasher.hash(input.password);
     const hashedPassword = HashedPasswordVO.fromHash(hash);

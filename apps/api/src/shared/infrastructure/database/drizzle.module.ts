@@ -1,6 +1,6 @@
 import { Module, Global, Inject, type OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Pool } from 'pg';
+import type { Pool } from 'pg';
 import type { Env } from '../../../config/env';
 import {
   DRIZZLE_TOKEN,

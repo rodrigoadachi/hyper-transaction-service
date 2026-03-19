@@ -1,4 +1,4 @@
-import { BadRequestException, PipeTransform } from '@nestjs/common';
+import { UnprocessableEntityException, type PipeTransform } from '@nestjs/common';
 import type { ZodSchema } from 'zod';
 
 export class ZodValidationPipe<T> implements PipeTransform {
@@ -7,7 +7,7 @@ export class ZodValidationPipe<T> implements PipeTransform {
   transform(value: unknown): T {
     const result = this.schema.safeParse(value);
     if (!result.success) {
-      throw new BadRequestException({
+      throw new UnprocessableEntityException({
         message: 'Validation failed',
         errors: result.error.issues,
       });

@@ -37,7 +37,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Registrar novo usuário',
     description:
-      'Cria uma nova conta de usuário associada a um tenant.\n\n' +
+      'Cria uma nova conta de usuário.\n\n' +
       '**Regras de senha:** mínimo 8 caracteres, ao menos 1 letra maiúscula e 1 número.',
   })
   @ApiBody({
