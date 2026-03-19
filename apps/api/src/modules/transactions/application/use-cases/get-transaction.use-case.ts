@@ -27,7 +27,7 @@ export class GetTransactionUseCase {
     private readonly transactionRepository: ITransactionRepository,
     @Inject(TRANSACTION_TOKENS.TRANSACTION_ENTRY_REPOSITORY)
     private readonly entryRepository: ITransactionEntryRepository,
-  ) {}
+  ) { }
 
   async execute(input: GetTransactionInput): Promise<GetTransactionOutput> {
     const start = Date.now();

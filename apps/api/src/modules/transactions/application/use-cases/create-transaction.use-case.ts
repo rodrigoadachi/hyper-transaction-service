@@ -49,7 +49,7 @@ export class CreateTransactionUseCase {
     private readonly eventPublisher: ITransactionEventPublisher,
     @Inject(TRANSACTION_TOKENS.TRANSACTION_CACHE_SERVICE)
     private readonly cacheService: ITransactionCacheService,
-  ) {}
+  ) { }
 
   async execute(input: CreateTransactionInput): Promise<CreateTransactionOutput> {
     const start = Date.now();

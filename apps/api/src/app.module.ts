@@ -82,4 +82,4 @@ const monorepoRoot = resolve(process.cwd(), '../../');
     },
   ],
 })
-export class AppModule {}
+export class AppModule { }

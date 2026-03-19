@@ -11,7 +11,7 @@ type TransactionEntryRow = typeof transactionEntriesTable.$inferSelect;
 
 @Injectable()
 export class DrizzleTransactionEntryRepository implements ITransactionEntryRepository {
-  constructor(@Inject(DRIZZLE_TOKEN) private readonly db: DrizzleDb) {}
+  constructor(@Inject(DRIZZLE_TOKEN) private readonly db: DrizzleDb) { }
 
   async saveMany(entries: TransactionEntryEntity[], tx?: unknown): Promise<void> {
     if (entries.length === 0) return;

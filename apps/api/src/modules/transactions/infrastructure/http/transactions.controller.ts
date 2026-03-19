@@ -107,7 +107,7 @@ export class TransactionsController {
     private readonly createTransactionUseCase: CreateTransactionUseCase,
     private readonly listTransactionsUseCase: ListTransactionsUseCase,
     private readonly getTransactionUseCase: GetTransactionUseCase,
-  ) {}
+  ) { }
 
   // ── POST /transactions ───────────────────────────────────────────────────
   @Post()

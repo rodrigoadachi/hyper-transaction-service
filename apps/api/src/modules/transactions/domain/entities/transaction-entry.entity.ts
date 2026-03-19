@@ -28,7 +28,7 @@ export class TransactionEntryEntity {
     readonly amountInCents: number,
     readonly description: string | null,
     readonly createdAt: Date,
-  ) {}
+  ) { }
 
   static create(params: CreateTransactionEntryParams): TransactionEntryEntity {
     return new TransactionEntryEntity(

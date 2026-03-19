@@ -11,7 +11,7 @@ import type {
 
 @Injectable()
 export class DrizzleIdempotencyRepository implements IIdempotencyRepository {
-  constructor(@Inject(DRIZZLE_TOKEN) private readonly db: DrizzleDb) {}
+  constructor(@Inject(DRIZZLE_TOKEN) private readonly db: DrizzleDb) { }
 
   async tryAcquire(
     tenantId: string,

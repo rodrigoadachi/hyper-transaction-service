@@ -33,7 +33,7 @@ export class AuthController {
   constructor(
     private readonly registerUseCase: RegisterUseCase,
     private readonly loginUseCase: LoginUseCase,
-  ) {}
+  ) { }
 
   // ── POST /auth/register ───────────────────────────────────────────────────
   @Post('register')
