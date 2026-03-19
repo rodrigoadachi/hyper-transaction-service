@@ -71,7 +71,8 @@ WORKDIR /app
 # Copy the root pnpm store / shared dependencies first.
 COPY --from=builder /app/node_modules ./node_modules
 
-# Preserve the package directory structure used by pnpm symlinks.
+# Preserve the package directory structure used by pnpm symlinks and keep
+# runtime migration scripts available for command overrides in EasyPanel.
 COPY --from=builder /app/apps/api ./apps/api
 
 USER hyper
@@ -83,5 +84,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget -qO- http://localhost:3333/health || exit 1
 
 WORKDIR /app/apps/api
+
+ENTRYPOINT ["sh", "./docker-entrypoint.sh"]
 
 CMD ["node", "dist/main"]
