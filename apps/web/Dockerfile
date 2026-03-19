@@ -10,7 +10,7 @@
 #
 # Uses Turborepo prune --docker to isolate '@hyper/web' + its local deps (@hyper/ui,
 # @hyper/typescript-config, etc.) and maximise Docker layer caching.
-# Final image is caddy:alpine serving the Vite SPA static build.
+# Final image is node:24-alpine serving the Vite SPA static build.
 # Traefik (docker-compose / AWS ALB) provides TLS termination externally.
 # =============================================================================
 
@@ -52,20 +52,19 @@ COPY --from=pruner /app/out/full .
 RUN turbo run build --filter=@hyper/web
 
 # ─── Stage 5: runner ─────────────────────────────────────────────────────────
-# Serve the static Vite build via caddy:alpine — no Node.js needed at runtime.
-# Caddy handles SPA routing, gzip, cache headers, and security headers.
-# TLS termination is done externally by Traefik (local) or ALB (AWS).
-FROM caddy:alpine AS runner
+# Serve the static Vite build via a tiny Node.js server to avoid an extra
+# runtime image dependency during EasyPanel deploys.
+FROM node:24-alpine AS runner
 
-ENV WEB_PORT=80
+ENV NODE_ENV=production
+ENV WEB_PORT=3000
 
-# Copy Caddyfile (SPA routing, cache headers, security headers)
-COPY apps/web/Caddyfile /etc/caddy/Caddyfile
+WORKDIR /app
 
-# Copy Vite build output to Caddy's default file root
-COPY --from=builder /app/apps/web/dist /srv
+# Copy static build output and the lightweight runtime server
+COPY --from=builder /app/apps/web/dist ./dist
+COPY apps/web/server.mjs ./server.mjs
 
-EXPOSE 80
+EXPOSE 3000
 
-# Caddy handles signals (SIGTERM/SIGINT) correctly for graceful shutdown
-CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+CMD ["node", "server.mjs"]
