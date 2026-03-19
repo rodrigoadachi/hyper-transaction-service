@@ -41,7 +41,10 @@ function sendFile(response, filePath, cacheControl) {
 }
 
 async function proxyApiRequest(request, response) {
-  const targetUrl = new URL(request.url || '/', apiUrl);
+  console.log('request::', request)
+  const incomingUrl = request.url || '/';
+  const rewrittenPath = incomingUrl.replace(/^\/api(?=\/|$)/, '') || '/';
+  const targetUrl = new URL(rewrittenPath, apiUrl);
   const headers = new Headers();
 
   for (const [key, value] of Object.entries(request.headers)) {
